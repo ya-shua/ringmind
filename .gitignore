@@ -1,0 +1,56 @@
+# 依赖
+node_modules/
+
+# 运行时数据（记忆库本身，绝不入库）
+data/
+*.jsonl
+!docs/**/*.jsonl
+
+# 日志
+*.log
+logs/
+
+# 系统
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 编辑器
+.vscode/
+.idea/
+*.swp
+
+# 本地配置（可能含密钥）
+.env
+.env.*
+config.local.json
+
+# 测试产物
+coverage/
+.nyc_output/
+# �ڲ�����ĵ��������ֿ�
+docs/
+
+demo/
+_bench.mjs
+*旧版备份*
+
+data-location.json
+# 记忆库清单（运行时状态，每台机器不一样）
+libraries.json
+
+# MCP 壳的降级水位（运行时状态）
+mcp/.decay-state.json
+# OneBot 网关配置（含令牌，绝不入库）
+onebot.json
+
+# 本机 node.exe 路径（每台机器不一样）
+node-path.txt
+
+# 内部工作笔记（设计/交接/会话记录，不进仓库）
+交接.md
+设计-*.md
+剩余工作.md
+参数表.md
+接入QQ-*.md
+设计确认-*.md
