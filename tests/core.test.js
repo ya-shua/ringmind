@@ -5,6 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert";
 import { Ringmind, hookWeights } from "../src/index.js";
+import { metaMemoryDefaultOf } from "../src/core/rings.js";
 
 const DAY = 86400000;
 
@@ -738,5 +739,89 @@ test("换档会把每圈的天数和容量都填满，不留空洞", () => {
       assert.ok(cfg.rings[ring].cap > 0, `${id} 档 ${ring} 容量没填`);
     }
   }
+  db.close();
+});
+
+test("元记忆：打开后会告诉 AI 还有几个点没想起来", () => {
+  const db = fresh();
+  // 遗忘模式默认是不开的（自然淡忘、不自知），这里显式打开来验证功能本身
+  db.updateConfig({ metaMemory: true });
+  const t0 = Date.now();
+  const pts = ["黄色", "大汽车", "路边", "下午", "太阳"];
+  const mem = db.remember({ content: "黄色大汽车停在路边", ring: "ring5", points: pts, at: t0 });
+
+  const r = db.recall(["黄色"], { now: t0 + 1000 }).find((x) => x.id === mem.id);
+  assert.ok(r, "应该能想起来");
+  assert.ok(r.gap, "开着元记忆就该有 gap");
+  assert.equal(r.gap.total, pts.length, "原本几个点");
+  assert.equal(r.gap.shown, r.points.length, "这次想起几个");
+  assert.equal(r.gap.missing, r.gap.total - r.gap.shown, "还剩几个");
+  assert.ok(r.gap.missing > 0, "圈五只看得到四成，必然有想不起来的");
+  db.close();
+});
+
+test("元记忆：关掉就不给 gap", () => {
+  const db = fresh();
+  db.updateConfig({ metaMemory: false });
+  const t0 = Date.now();
+  const mem = db.remember({
+    content: "黄色大汽车停在路边",
+    ring: "ring5",
+    points: ["黄色", "大汽车", "路边", "下午", "太阳"],
+    at: t0,
+  });
+
+  const r = db.recall(["黄色"], { now: t0 + 1000 }).find((x) => x.id === mem.id);
+  assert.ok(r, "还是能想起来");
+  assert.equal(r.gap, undefined, "关掉就不该有 gap");
+  db.close();
+});
+
+test("元记忆：永不忘模式下，开关开着也不给 gap", () => {
+  const db = fresh();
+  db.setMode("never-forget");
+  db.updateConfig({ metaMemory: true }); // 故意开着
+  const t0 = Date.now();
+  const mem = db.remember({
+    content: "黄色大汽车停在路边",
+    ring: "ring5",
+    points: ["黄色", "大汽车", "路边", "下午", "太阳"],
+    at: t0,
+  });
+
+  const r = db.recall(["黄色"], { now: t0 + 1000 }).find((x) => x.id === mem.id);
+  assert.ok(r, "还是能想起来");
+  assert.equal(r.gap, undefined, "什么都不忘的模式，凭什么有缺口");
+  db.close();
+});
+
+test("元记忆：遗忘模式默认关着（自然淡忘，不该自知）", () => {
+  const db = fresh();
+  const cfg = db.getConfig();
+  assert.equal(cfg.mode, "forget", "新库默认遗忘模式");
+  assert.equal(cfg.metaMemory, false, "遗忘模式下元记忆默认关");
+  db.close();
+});
+
+test("元记忆：默认值表 —— 只有伪遗忘开", () => {
+  assert.equal(metaMemoryDefaultOf("pseudo-forget"), true, "伪遗忘最需要它");
+  assert.equal(metaMemoryDefaultOf("forget"), false, "遗忘要自然，不该自知");
+  assert.equal(metaMemoryDefaultOf("never-forget"), false, "什么都没忘");
+  assert.equal(metaMemoryDefaultOf("custom"), true, "自定义交给用户");
+  assert.equal(metaMemoryDefaultOf("乱写的"), true, "不认识的模式退回开");
+});
+
+test("元记忆：伪遗忘模式下开着，能说出还缺几个点", () => {
+  const db = fresh();
+  db.setMode("pseudo-forget");
+  db.updateConfig({ metaMemory: true });
+  const t0 = Date.now();
+  const pts = ["黄色", "大汽车", "路边", "下午", "太阳"];
+  const mem = db.remember({ content: "黄色大汽车停在路边", ring: "ring5", points: pts, at: t0 });
+
+  const r = db.recall(["黄色"], { now: t0 + 1000 }).find((x) => x.id === mem.id);
+  assert.ok(r, "应该能想起来");
+  assert.ok(r.gap, "伪遗忘模式开着元记忆，就该有缺口");
+  assert.equal(r.gap.total, pts.length);
   db.close();
 });

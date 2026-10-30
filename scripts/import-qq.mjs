@@ -9,7 +9,7 @@
  *   node scripts/import-qq.mjs --list
  *       只列出有哪些对话可以选择，不写任何东西。
  *
- *   node scripts/import-qq.mjs --pick group:111222333,private:123456789
+ *   node scripts/import-qq.mjs --pick group:123456789,private:123456789
  *       导入指定的对话（会先问你确认）。
  *
  *   node scripts/import-qq.mjs --pick all

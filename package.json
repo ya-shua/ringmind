@@ -16,7 +16,7 @@
     "node": ">=22.5.0"
   },
   "scripts": {
-    "test": "node --test tests/core.test.js tests/server.test.js",
+    "test": "node --test tests/core.test.js tests/server.test.js tests/sea.test.js",
     "start": "node src/web/server.js",
     "serve": "node src/web/server.js"
   },

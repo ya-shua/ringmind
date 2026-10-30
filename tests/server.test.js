@@ -141,6 +141,29 @@ test("登录页和面板页都能打开", async () => {
   await s.done();
 });
 
+test("登录后打开主页，直接是记忆海", async () => {
+  const s = await boot();
+
+  // 没登录：/ 是登录页
+  const before = await (await fetch(s.url + "/")).text();
+  assert.ok(before.includes("api/login"), "没登录先给登录页");
+
+  // 登录过：/ 就是记忆海（主页）
+  const { cookie } = await login(s.url, s.token);
+  const home = await fetch(s.url + "/", { headers: { cookie } });
+  assert.equal(home.status, 200);
+  const html = await home.text();
+  assert.ok(html.includes("记忆海"), "主页该是记忆海");
+  assert.ok(html.includes("api/sea"), "记忆海要读真实数据");
+
+  // 退出之后回到登录页，不会再看到海
+  await fetch(s.url + "/api/logout", { headers: { cookie } });
+  const after = await (await fetch(s.url + "/")).text();
+  assert.ok(after.includes("api/login"), "退出后主页回到登录页");
+
+  await s.done();
+});
+
 test("会话真的没了就进不去（不会自己偷偷恢复）", async () => {
   const s = await boot();
   const { cookie } = await login(s.url, s.token);

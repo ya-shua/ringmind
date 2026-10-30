@@ -9,7 +9,7 @@
  */
 
 /** 结构版本，将来迁移用 */
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 export const SCHEMA_SQL = `
 PRAGMA journal_mode = WAL;
@@ -80,6 +80,24 @@ CREATE TABLE IF NOT EXISTS stickers (
 );
 CREATE INDEX IF NOT EXISTS idx_stk_used ON stickers(used_at);
 
+-- Token 用量：从 DSH 的账本同步进来，做一份长期存档
+--   DSH 的账本是单个 JSON 文件，整体重写，丢了就没了；
+--   这里按 (天, provider, 模型) 存一行，重复同步只会覆盖同一行，不会越积越多。
+CREATE TABLE IF NOT EXISTS token_usage (
+  day      TEXT    NOT NULL,             -- 2026-10-07
+  provider TEXT    NOT NULL,             -- deepseek-account / deep / dps / qianwenai
+  model    TEXT    NOT NULL,             -- deepseek-flash
+  hit      INTEGER DEFAULT 0,            -- 缓存命中输入
+  miss     INTEGER DEFAULT 0,            -- 未命中输入
+  write    INTEGER DEFAULT 0,            -- 缓存写入
+  output   INTEGER DEFAULT 0,            -- 输出
+  calls    INTEGER DEFAULT 0,
+  cost     REAL    DEFAULT 0,            -- 账本自己算的钱（0 = 免费额度）
+  synced_at INTEGER,
+  PRIMARY KEY (day, provider, model)
+);
+CREATE INDEX IF NOT EXISTS idx_tu_day ON token_usage(day);
+
 -- 操作日志：谁在什么时候动了什么（调试与回滚用）
 CREATE TABLE IF NOT EXISTS ops (
   id      INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -94,6 +112,8 @@ CREATE INDEX IF NOT EXISTS idx_ops_ts ON ops(ts);
  * 从老版本升上来。
  * v1 → v2：memories 加 ring_entered_at（掉圈计时锚点）。
  *          老的库一律用 created_at 回填 —— 它们本来就没记过进圈时间。
+ * v2 → v3：加 token_usage 表。SCHEMA_SQL 里是 CREATE TABLE IF NOT EXISTS，
+ *          老库打开时会自动补上，这里不用 ALTER。
  */
 export function migrate(db, fromVersion) {
   const v = Number(fromVersion ?? 0);

@@ -22,7 +22,8 @@ import { fileURLToPath } from "node:url";
 import { Ringmind } from "../index.js";
 import { ensureToken, verifyToken, makeSessionCookie, readToken, rotateToken } from "./auth.js";
 import { checkForUpdate, applyUpdate, restartPanel, localVersion } from "./update.js";
-import { CUSTOM_PREFIX, PRESETS, MODES, RINGS, RING_ORDER } from "../core/rings.js";
+import { CUSTOM_PREFIX, PRESETS, MODES, RINGS, RING_ORDER, metaMemoryDefaultOf } from "../core/rings.js";
+import { buildSeaScene } from "./sea.js";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 
@@ -90,30 +91,286 @@ function costOf(model, b, ms) {
   );
 }
 
+/**
+ * QQ 机器人的用量账本：qq-bridge 的 state/token-usage.jsonl
+ *
+ * 这才是「大肥鱼在 QQ 里说话花掉的 token」—— 每一行带 key（group:xxx /
+ * private:xxx）、turn、model，能按会话分账。
+ *
+ * 注意别跟 DSH 自己的账本搞混：~/.dsh/dsh-usage/usage-ledger.json 是
+ * **DeepSeek Harness 本体**（也就是你跟 coding agent 对话）的用量，
+ * 结构上也只按 provider/model 折叠，压根没有会话维度。两个混在一起会
+ * 把几十亿 token 算成 QQ 的，所以这里默认只认 qq-bridge 的。
+ */
+function qqLedgerCandidates() {
+  const list = [];
+  const home = process.env.USERPROFILE || process.env.HOME || "";
+  const docs = join(home, "Documents");
+  const homeCn = join(home, "文档");
+
+  // qq-bridge 可能落在这些位置
+  const roots = [
+    join(homeCn, "deepseek-harness", "default-workspace"),
+    join(docs, "deepseek-harness", "default-workspace"),
+    join(home, ".dsh", "default-workspace"),
+    "D:\\AI",
+  ];
+  for (const r of roots) {
+    list.push(join(r, "qq-bridge", "state", "token-usage.jsonl"));
+  }
+  // 项目根往上找一圈（有些人把 qq-bridge 和 ring 放一起）
+  list.push(resolve(HERE, "../../qq-bridge/state/token-usage.jsonl"));
+  list.push(resolve(HERE, "../../../qq-bridge/state/token-usage.jsonl"));
+
+  return list.filter((p) => {
+    try { return existsSync(p); } catch { return false; }
+  });
+}
+
+/** 找到真正该用的账本：先看 data-location.json 指定的，再看 qq-bridge */
+function findUsageLedger() {
+  try {
+    const locFile = join(HERE, "..", "..", "data-location.json");
+    if (existsSync(locFile)) {
+      const loc = JSON.parse(readFileSync(locFile, "utf8"));
+      const p = loc && typeof loc.tokenUsageFile === "string" ? loc.tokenUsageFile.trim() : "";
+      if (p && existsSync(p)) return { path: p, kind: "指定" };
+    }
+  } catch {
+    /* 读不到就往下探 */
+  }
+  const qq = qqLedgerCandidates();
+  if (qq.length) return { path: qq[0], kind: "qq-bridge" };
+
+  // 老位置：项目里的 data/token-usage.jsonl
+  if (existsSync(DEFAULT_TOKEN_LEDGER)) return { path: DEFAULT_TOKEN_LEDGER, kind: "项目data" };
+
+  // 最后才考虑 DSH 的总账 —— 但会明确标注「这不是 QQ 的」
+  const d = dshLedgerPath();
+  if (d) return { path: d, kind: "dsh-harness" };
+
+  return { path: null, kind: null };
+}
+
+/**
+ * DSH 自己的用量账本：~/.dsh/dsh-usage/usage-ledger.json
+ *
+ * 结构和老的 jsonl 不一样，它是「按天 → 按 provider → 按模型」三层嵌套：
+ *   { version:1, days:{ "2026-10-07": { "deepseek-account": { "deepseek-flash": {
+ *       inputTokens, outputTokens, cacheReadTokens, cacheWriteTokens, reasoningTokens, calls, cost } } } } }
+ *
+ * 这里把它摊平成和 jsonl 一样的记录，后面的聚合逻辑就不用改。
+ */
+function dshLedgerPath() {
+  try {
+    const home = process.env.USERPROFILE || process.env.HOME || "";
+    if (!home) return null;
+    const p = join(home, ".dsh", "dsh-usage", "usage-ledger.json");
+    return existsSync(p) ? p : null;
+  } catch {
+    return null;
+  }
+}
+
+function readDshLedger(filePath, hours = 0) {
+  const j = JSON.parse(readFileSync(filePath, "utf8"));
+  const days = (j && typeof j === "object" && j.days) || {};
+  const out = [];
+  const cutoff = hours > 0 ? Date.now() - hours * 3600_000 : 0;
+
+  for (const [day, providers] of Object.entries(days)) {
+    if (!providers || typeof providers !== "object") continue;
+    // 一天算一条：取当天中午 12 点（北京时间）当代表时刻，避免时区把日期挪走
+    const ms = new Date(day + "T12:00:00+08:00").getTime();
+    if (!Number.isFinite(ms)) continue;
+    if (hours > 0 && ms < cutoff) continue;
+
+    for (const [provider, models] of Object.entries(providers)) {
+      if (!models || typeof models !== "object") continue;
+      for (const [model, m] of Object.entries(models)) {
+        if (!m || typeof m !== "object") continue;
+        const b = {
+          cacheHit: Number(m.cacheReadTokens) || 0,
+          cacheMiss: Number(m.inputTokens) || 0,
+          cacheWrite: Number(m.cacheWriteTokens) || 0,
+          output: Number(m.outputTokens) || 0,
+        };
+        if (b.cacheHit + b.cacheMiss + b.output === 0) continue;
+        out.push({
+          t: ms,
+          model,
+          key: String(provider || "(未知)"),
+          cost: Number(m.cost) || 0,   // 用它自己算好的钱，别重复计
+          calls: Number(m.calls) || 0,
+          b,
+        });
+      }
+    }
+  }
+  out.sort((a, b) => a.t - b.t);
+  return out;
+}
+
+/**
+ * 把 DSH 账本同步进库。
+ *
+ * 为什么要存库：DSH 的账本是**一个 JSON 文件整体重写**的，机器崩一下、
+ * 谁手滑删一下，历史就没了。存进 SQLite 后每次同步都是幂等覆盖，
+ * 账本哪天真丢了，库里的历史还在。
+ *
+ * 注意 cost：0 要原样存 —— 那是「这家的免费额度」，不是「没算」。
+ */
+function syncDshToDb(store) {
+  try {
+    if (!store || typeof store.upsertTokenUsage !== "function") return { ok: false, reason: "库不支持" };
+    const found = findUsageLedger();
+    if (!found.path) return { ok: false, reason: "没有 QQ 账本" };
+
+    // DSH 那种三层嵌套的另算
+    let recs;
+    if (/\.json$/i.test(found.path) && !/\.jsonl$/i.test(found.path)) {
+      recs = readDshLedger(found.path, 0);
+    } else {
+      recs = [];
+      for (const line of String(readFileSync(found.path, "utf8")).split("\n")) {
+        const s = line.trim();
+        if (!s) continue;
+        try {
+          const r = JSON.parse(s);
+          if (r.retry > 0) continue; // 重试是重发，别重复计
+          // k:"base" 是**累计快照**（每个 session 一个递增序列），
+          // k:"turn" 才是每次调用的增量。把快照也加进去会重复计算 5~6 倍，
+          // 3.7 亿这个吓人的数字就是这么来的 —— 真实只有 6800 万。
+          if (r.k === "base") continue;
+          recs.push(r);
+        } catch {
+          /* 坏行跳过 */
+        }
+      }
+    }
+
+    // 先按 (天, 来源, 模型) 聚合：同一天同一家同一模型只留一行，避免覆盖丢数
+    const bucket = new Map();
+    for (const r of recs) {
+      const b = r.b || {};
+      const hit = b.cacheHit || 0;
+      const miss = b.cacheMiss || 0;
+      const wr = b.cacheWrite || 0;
+      const out = b.output || 0;
+      if (hit + miss + out + wr === 0) continue;
+      const ms = r.t || 0;
+      if (!ms) continue;
+      const day = new Date(ms + 8 * 3600_000).toISOString().slice(0, 10);
+      // 分组键用**会话**（group:xxx / private:xxx），别用 provider ——
+      // 拿 provider 当键会把所有群聊私聊糊成一坨「deep」。
+      const session = String(r.key || r.provider || "(未知)");
+      const model = String(r.model || "(未知)");
+      const id = day + "\u0000" + session + "\u0000" + model;
+      const g = bucket.get(id) || { day, provider: session, model, hit: 0, miss: 0, write: 0, output: 0, calls: 0, cost: 0 };
+      g.hit += hit;
+      g.miss += miss;
+      g.write += wr;
+      g.output += out;
+      g.calls += 1;
+      // 钱在这里就算好再存 —— qq-bridge 的账本不带 cost，
+      // 存个 0 进去，读出来会被当成「真实花费 0」，白丢一笔钱。
+      g.cost += Number(r.cost) > 0 ? Number(r.cost) : costOf(model, b, ms);
+      bucket.set(id, g);
+    }
+
+    const rows = [...bucket.values()];
+    const n = store.upsertTokenUsage(rows);
+    return { ok: true, synced: n, from: found.path, kind: found.kind };
+  } catch (e) {
+    return { ok: false, reason: e?.message || String(e) };
+  }
+}
+
+/** 把库里的用量记录转成和账本一样的记录格式，好复用同一套聚合 */
+function dbTokenRecords(store, hours = 0) {
+  try {
+    if (!store || typeof store.readTokenUsage !== "function") return null;
+    const rows = store.readTokenUsage(hours);
+    if (!rows || !rows.length) return null;
+    return rows.map((r) => ({
+      t: new Date(r.day + "T12:00:00+08:00").getTime(),
+      model: r.model,
+      key: r.provider,
+      cost: Number(r.cost) || 0,
+      calls: Number(r.calls) || 0,
+      b: {
+        cacheHit: Number(r.hit) || 0,
+        cacheMiss: Number(r.miss) || 0,
+        cacheWrite: Number(r.write) || 0,
+        output: Number(r.output) || 0,
+      },
+    }));
+  } catch {
+    return null;
+  }
+}
+
 /** 读整个账本，聚合出总账 + 按会话分组。hours > 0 时只算最近这么多小时 */
 function readTokenLedger(ledgerPath, hours = 0) {
+  // 没指定就自己找：**优先 QQ 的账本**，DSH 的总账只当最后备选
+  let ledgerKind = "指定";
   if (!ledgerPath || !existsSync(ledgerPath)) {
-    return { ok: false, error: "找不到用量账本：" + ledgerPath, records: 0 };
+    const found = findUsageLedger();
+    ledgerPath = found.path;
+    ledgerKind = found.kind;
+  }
+  if (!ledgerPath || !existsSync(ledgerPath)) {
+    return {
+      ok: false,
+      error: "找不到 QQ 的用量账本 —— 没找到 qq-bridge/state/token-usage.jsonl。\n在 data-location.json 里加 \"tokenUsageFile\" 指过去也行。",
+      records: 0,
+      triedDsh: dshLedgerPath(),
+    };
   }
 
+  const isDsh = /\.json$/i.test(ledgerPath) && !/\.jsonl$/i.test(ledgerPath);
+  const records = [];
+  try {
+    if (isDsh) {
+      records.push(...readDshLedger(ledgerPath, 0)); // 全量读，时间窗交给聚合截
+    } else {
+      for (const line of String(readFileSync(ledgerPath, "utf8")).split("\n")) {
+        const s = line.trim();
+        if (!s) continue;
+        try {
+          const r = JSON.parse(s);
+          if (r.k === "base") continue; // 累计快照，见 syncDshToDb 的说明
+          records.push(r);
+        } catch {
+          /* 一行坏了不算数 */
+        }
+      }
+    }
+  } catch (e) {
+    return { ok: false, error: "账本读不了：" + (e?.message || e), records: 0, ledger: ledgerPath };
+  }
+
+  const out = aggregateTokenRecords(records, hours, ledgerPath);
+  out.ledgerKind = ledgerKind;
+  return out;
+}
+
+/**
+ * 把一堆用量记录聚合成总账。
+ *
+ * 三个来源（SQLite / DSH 的 JSON / 老的 jsonl）共用这一个函数，
+ * 免得三套算法算出三个不同的数。
+ */
+function aggregateTokenRecords(records, hours = 0, ledgerLabel = "") {
   const totals = { cacheHit: 0, cacheMiss: 0, cacheWrite: 0, output: 0, cost: 0, calls: 0, turns: 0 };
   const byKey = new Map();
   const byDay = new Map();
-  let records = 0;
+  let recCount = 0;
   let firstAt = null;
   let lastAt = null;
   const cutoff = hours > 0 ? Date.now() - hours * 3600_000 : 0;
 
-  const text = readFileSync(ledgerPath, "utf8");
-  for (const line of text.split("\n")) {
-    const s = line.trim();
-    if (!s) continue;
-    let rec;
-    try {
-      rec = JSON.parse(s);
-    } catch {
-      continue;
-    }
+  for (const rec of records) {
     const b = rec.b || {};
     const hit = b.cacheHit || 0;
     const miss = b.cacheMiss || 0;
@@ -123,8 +380,14 @@ function readTokenLedger(ledgerPath, hours = 0) {
     const ms = rec.t || 0;
     // 时间窗口：只要最近 hours 小时
     if (hours > 0 && (!ms || ms < cutoff)) continue;
-    const cost = costOf(rec.model, b, ms);
-    records++;
+    // 账本自己算过钱就用它的 —— 注意 cost === 0 是「这家的免费额度」，
+    // 不是「没算过」。以前写成 rec.cost > 0 就把免费的重算成钱了，白算出上百块。
+    // 有 cost 就用（0 也算真值 —— 那是免费额度）；
+    // 但没有 cost、或者 cost 是 0 却有几百亿 token，那就是没算过，按表估。
+    const rawCost = rec.cost;
+    const hasOwnCost = rawCost !== undefined && rawCost !== null && Number.isFinite(Number(rawCost));
+    const cost = hasOwnCost && Number(rawCost) > 0 ? Number(rawCost) : costOf(rec.model, b, ms);
+    recCount++;
     if (!firstAt || ms < firstAt) firstAt = ms;
     if (!lastAt || ms > lastAt) lastAt = ms;
 
@@ -133,20 +396,29 @@ function readTokenLedger(ledgerPath, hours = 0) {
     totals.cacheWrite += b.cacheWrite || 0;
     totals.output += out;
     totals.cost += cost;
-    totals.calls++;
+    totals.calls += Number.isFinite(Number(rec.calls)) ? Number(rec.calls) : 1;
 
     const key = rec.key || "(未知)";
     let g = byKey.get(key);
     if (!g) {
-      g = { key, kind: key.startsWith("group:") ? "群聊" : "私聊", id: key.split(":")[1] || "", cacheHit: 0, cacheMiss: 0, output: 0, cost: 0, calls: 0, turns: new Set(), lastAt: 0 };
+      g = {
+        key,
+        // DSH 账本里的 key 是 provider 名（deep / dps / deepseek-account），不是会话
+        kind: key.startsWith("group:") ? "群聊" : key.startsWith("private:") ? "私聊" : "来源",
+        id: key.includes(":") ? key.split(":")[1] || "" : "",
+        cacheHit: 0, cacheMiss: 0, output: 0, cost: 0, calls: 0, turns: new Set(), hasTurn: false, lastAt: 0,
+      };
       byKey.set(key, g);
     }
     g.cacheHit += hit;
     g.cacheMiss += miss;
     g.output += out;
     g.cost += cost;
-    g.calls++;
-    if (rec.k === "turn") g.turns.add(rec.turn ?? 0);
+    g.calls += Number.isFinite(Number(rec.calls)) ? Number(rec.calls) : 1;
+    if (rec.k === "turn") {
+      g.turns.add(rec.turn ?? 0);
+      g.hasTurn = true;
+    }
     if (ms > g.lastAt) g.lastAt = ms;
 
     // 按天（北京时间）
@@ -156,24 +428,28 @@ function readTokenLedger(ledgerPath, hours = 0) {
       dd = { date: dstr, cacheHit: 0, cacheMiss: 0, output: 0, cost: 0, calls: 0 };
       byDay.set(dstr, dd);
     }
+    // 和 totals / sessions 用同一个口径 —— 库里的行是聚合值，
+    // 每行可能代表几百次调用，这里写 dd.calls++ 会让「按天」少算两个数量级
+    const recCalls = Number.isFinite(Number(rec.calls)) ? Number(rec.calls) : 1;
     dd.cacheHit += hit;
     dd.cacheMiss += miss;
     dd.output += out;
     dd.cost += cost;
-    dd.calls++;
+    dd.calls += recCalls;
   }
 
   const sessions = [...byKey.values()]
-    .map((g) => ({ ...g, turns: g.turns.size }))
+    // 没有 turn 信息时给 null，别拿 0 冒充「聊了 0 轮」
+    .map((g) => ({ ...g, turns: g.hasTurn ? g.turns.size : null }))
     .sort((a, b) => b.cost - a.cost);
 
   const inputTotal = totals.cacheHit + totals.cacheMiss;
 
   return {
     ok: true,
-    ledger: ledgerPath,
+    ledger: ledgerLabel,
     hours,
-    records,
+    records: recCount,
     firstAt,
     lastAt,
     totals: {
@@ -207,7 +483,14 @@ const LOCATION_FILE = resolve(HERE, "../../data-location.json");
 const ONEBOT_FILE = resolve(HERE, "../../onebot.json");
 
 function readOnebot(dbRef) {
-  const def = { url: "http://127.0.0.1:3000", token: "" };
+  // consoleUrl / consolePassword 是 SnowLuma 控制台（WebUI）的登录信息。
+  // 控制台不放行 OneBot 的 accessToken，只能用这个密码 —— 存一次，之后自动读。
+  const def = {
+    url: "http://127.0.0.1:3000",
+    token: "",
+    consoleUrl: "http://127.0.0.1:5099",
+    consolePassword: "",
+  };
   try {
     if (existsSync(ONEBOT_FILE)) {
       const j = JSON.parse(readFileSync(ONEBOT_FILE, "utf8"));
@@ -230,11 +513,85 @@ function writeOnebot(cfg) {
   const out = {
     url: String((cfg && cfg.url) || "http://127.0.0.1:3000").trim() || "http://127.0.0.1:3000",
     token: String((cfg && cfg.token) || "").trim(),
+    consoleUrl: String((cfg && cfg.consoleUrl) || "http://127.0.0.1:5099").trim() || "http://127.0.0.1:5099",
+    consolePassword: String((cfg && cfg.consolePassword) || ""),
   };
   try {
     writeFileSync(ONEBOT_FILE, JSON.stringify(out, null, 2) + "\n", "utf8");
   } catch {}
   return out;
+}
+
+/**
+ * SnowLuma 控制台地址：不问用户，自己问出来。
+ *
+ * 两条路：
+ *   1. 用存着的密码登进控制台，读 /api/system/settings 的 listeningPort
+ *      —— 这是**权威值**，端口被挤到 5100 也能拿到对的
+ *   2. 登不进去（没密码/密码错了/控制台没开），就退回到 OneBot 同一个主机 + 默认 5099
+ *
+ * 登录有频率限制，所以结果缓存 60 秒，别每次 health 都去敲它。
+ */
+let consoleProbe = { at: 0, url: "", auto: false, port: null };
+
+function defaultConsoleUrl(onebotUrl) {
+  try {
+    const u = new URL(onebotUrl || "http://127.0.0.1:3000");
+    const h = u.hostname === "0.0.0.0" ? "127.0.0.1" : u.hostname;
+    return u.protocol + "//" + h + ":5099";
+  } catch {
+    return "http://127.0.0.1:5099";
+  }
+}
+
+async function resolveConsoleUrl(ob) {
+  const seed = ob.consoleUrl || defaultConsoleUrl(ob.url);
+  const pw = ob.consolePassword || "";
+
+  // 60 秒内问过就不再问
+  if (consoleProbe.url && Date.now() - consoleProbe.at < 60000) return consoleProbe;
+
+  // 没密码就只能猜默认端口
+  if (!pw) {
+    consoleProbe = { at: Date.now(), url: seed, auto: false, port: null };
+    return consoleProbe;
+  }
+
+  try {
+    const lg = await fetch(seed.replace(/\/+$/, "") + "/api/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password: pw }),
+      signal: AbortSignal.timeout(4000),
+    });
+    const lj = await lg.json().catch(() => ({}));
+    if (!lj || !lj.success || !lj.token) {
+      consoleProbe = { at: Date.now(), url: seed, auto: false, port: null };
+      return consoleProbe;
+    }
+
+    const st = await fetch(seed.replace(/\/+$/, "") + "/api/system/settings", {
+      headers: { Authorization: "Bearer " + lj.token },
+      signal: AbortSignal.timeout(4000),
+    });
+    const sj = await st.json().catch(() => ({}));
+    const port = Number(sj?.listeningPort || sj?.settings?.webuiPort);
+    let host = String(sj?.settings?.webuiHost || "127.0.0.1").trim() || "127.0.0.1";
+    if (host === "0.0.0.0" || host === "::" || host === "") host = "127.0.0.1";
+
+    if (Number.isFinite(port) && port > 0) {
+      // 用同一个协议（tls 开了就 https）
+      let proto = "http:";
+      try { proto = new URL(seed).protocol; } catch {}
+      consoleProbe = { at: Date.now(), url: proto + "//" + host + ":" + port, auto: true, port };
+      return consoleProbe;
+    }
+    consoleProbe = { at: Date.now(), url: seed, auto: false, port: null };
+    return consoleProbe;
+  } catch {
+    consoleProbe = { at: Date.now(), url: seed, auto: false, port: null };
+    return consoleProbe;
+  }
 }
 
 function readLocation() {
@@ -281,6 +638,44 @@ const MIME = {
 
 /** 登录后的会话：sessionId → { expiresAt } */
 const sessions = new Map();
+
+/**
+ * 会话落盘用的文件。null = 还没确定数据目录（测试环境可能一直 null）。
+ *
+ * 为什么要落盘：sessions 原来是纯内存 Map，面板一重启（改代码、更新、
+ * 崩溃重拉）所有人的登录态就全没了 —— 浏览器里 cookie 还在发，
+ * 但服务端不认识了，preview.html 第一个请求就 401，被踢回登录页，
+ * 看起来像"令牌登不进去"。写一份到数据目录就不会了。
+ */
+let SESSION_FILE = null;
+
+/** 从文件里捞回来（过期的直接扔） */
+function loadSessions() {
+  if (!SESSION_FILE) return;
+  try {
+    const arr = JSON.parse(readFileSync(SESSION_FILE, "utf8"));
+    if (!Array.isArray(arr)) return;
+    const now = Date.now();
+    for (const s of arr) {
+      if (s && typeof s.sid === "string" && Number(s.expiresAt) > now) {
+        sessions.set(s.sid, { expiresAt: Number(s.expiresAt) });
+      }
+    }
+  } catch {
+    // 没文件、文件坏了、权限不够 —— 都当空的重来，不影响启动
+  }
+}
+
+/** 写回去（写不了也不该影响登录本身） */
+function saveSessions() {
+  if (!SESSION_FILE) return;
+  try {
+    const arr = [...sessions.entries()].map(([sid, v]) => ({ sid, expiresAt: v.expiresAt }));
+    writeFileSync(SESSION_FILE, JSON.stringify(arr), "utf8");
+  } catch {
+    // 只读盘、目录被删之类：会话就退化成内存态，能登能用，只是重启会掉
+  }
+}
 
 function parseArgs(argv) {
   // data 默认 null：不传就去看 data-location.json 记的位置，再退回 ./data
@@ -354,6 +749,7 @@ function sessionOf(req) {
   if (!s) return null;
   if (s.expiresAt < Date.now()) {
     sessions.delete(sid);
+    saveSessions();
     return null;
   }
   return sid;
@@ -406,6 +802,10 @@ export async function createServer({ dataDir, dbPath, port = 5173, host = "127.0
   const tk0 = ensureToken(data);
   const token = tk0.token;
   const created = tk0.created;
+
+  // 会话文件跟着数据目录走 —— 换库/搬目录时会话也跟着搬家
+  SESSION_FILE = join(data, "sessions.json");
+  loadSessions();
   let tokenPath = tk0.path;
   let db = new Ringmind(dbFile, basename(dbFile, extname(dbFile)));
   const startedAt = Date.now();
@@ -1004,6 +1404,7 @@ export async function createServer({ dataDir, dbPath, port = 5173, host = "127.0
       const cookie = makeSessionCookie();
       const sid = cookie.split(";")[0].split("=")[1];
       sessions.set(sid, { expiresAt: Date.now() + 86400000 });
+      saveSessions();
       res.setHeader("set-cookie", cookie);
       return json(res, 200, { ok: true });
     }
@@ -1011,8 +1412,49 @@ export async function createServer({ dataDir, dbPath, port = 5173, host = "127.0
     if (url === "/api/logout") {
       const sid = sessionOf(req);
       if (sid) sessions.delete(sid);
+      saveSessions();
       res.setHeader("set-cookie", "ringmind_session=; Path=/; Max-Age=0");
       return json(res, 200, { ok: true });
+    }
+
+    // ── 登录页背景：她看得见的圈里飘过的句子（免认证）───────
+    // 登录页在验证令牌之前就要把背景画出来，所以这个接口不能要 session。
+    // 只取 core/ring1/ring2/ring3 —— 就是她本来就看得见的那些。
+    // 闲聊圈、模糊圈、回忆圈、总库的内容一个字都不会从这儿出去。
+    if (method === "GET" && url.split("?")[0] === "/api/login-backdrop") {
+      let want = 12;
+      try {
+        want = Math.min(Math.max(Number(new URL(url, "http://x").searchParams.get("n")) || 12, 1), 24);
+      } catch {}
+      try {
+        const pool = [];
+        for (const ring of ["core", "ring1", "ring2", "ring3"]) {
+          let list = [];
+          try {
+            list = db.byRing(ring, 40) || [];
+          } catch {}
+          for (const m of list) {
+            const text = String(m.content || "").replace(/\s+/g, " ").trim();
+            if (!text) continue;
+            // 登录页是背景，不给人读文章 —— 太长的截一刀。
+            // 18 字 × 12px ≈ 216px，配合 left 最多 93% 也不会顶出右边界。
+            pool.push(text.length > 18 ? text.slice(0, 18) + "…" : text);
+          }
+        }
+        // 洗牌：每次打开登录页，飘的句子不一样
+        for (let i = pool.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          const tmp = pool[i]; pool[i] = pool[j]; pool[j] = tmp;
+        }
+        const items = pool.slice(0, want);
+        return json(res, 200, {
+          ok: true,
+          data: { items, source: items.length ? "library" : "default" },
+        });
+      } catch {
+        // 库读不到（没建库、文件坏了）不该让登录页打不开
+        return json(res, 200, { ok: true, data: { items: [], source: "default" } });
+      }
     }
 
     // ── 以下都要登录 ───────────────────────────────────
@@ -1074,6 +1516,8 @@ export async function createServer({ dataDir, dbPath, port = 5173, host = "127.0
             quota: cfg.quota,
             selfSpeechWeight: cfg.selfSpeechWeight,
             metaMemory: cfg.metaMemory,
+            // 这个模式下元记忆「默认」该不该开，前端拿它来提示
+            metaMemoryDefault: metaMemoryDefaultOf(cfg.mode),
             promote: cfg.promote,
             compaction: cfg.compaction,
           },
@@ -1403,6 +1847,8 @@ export async function createServer({ dataDir, dbPath, port = 5173, host = "127.0
 
         const st2 = db.todayStats();
         const onebot = await probe(ob.url, ob.token);
+        // 控制台地址：能从 SnowLuma 嘴里问出来就问，问不到再退回默认
+        const con = await resolveConsoleUrl(ob);
 
         let qq = null;
         if (onebot.reachable && onebot.status === 200 && onebot.body?.status === "ok") {
@@ -1435,13 +1881,13 @@ export async function createServer({ dataDir, dbPath, port = 5173, host = "127.0
               url: `http://${host}:${port}`,
               node: process.version,
               pid: process.pid,
-              token: maskToken(readToken(data) || token),
+              token: readToken(data) || token, // 明文：这行就是给人复制去登录的
               tokenHash: (() => {
                 const v = readToken(data) || token;
                 return v ? createHash("sha256").update(v).digest("hex").slice(0, 12) : null;
               })(),
             },
-            db: { ok: dbOk, path: dbFile, bytes, lastWrite, memories: st2.memories, points: st2.points },
+            db: { ok: dbOk, path: dbFile, name: basename(dbFile, extname(dbFile)), bytes, lastWrite, memories: st2.memories, points: st2.points },
             onebot: {
               url: ob.url,
               token: maskToken(ob.token),
@@ -1454,6 +1900,11 @@ export async function createServer({ dataDir, dbPath, port = 5173, host = "127.0
               uptime: gw?.uptime ?? null,
               app: ver?.app || null,
               version: ver?.version || null,
+              // SnowLuma 控制台（WebUI）：地址自动解析，密码是存的
+              consoleUrl: con.url,
+              consoleAuto: con.auto,      // true = 端口是从 SnowLuma 自己嘴里问出来的
+              consolePort: con.port,
+              consolePassword: ob.consolePassword || "",
             },
             qq,
             others: [
@@ -1486,8 +1937,46 @@ export async function createServer({ dataDir, dbPath, port = 5173, host = "127.0
         const cfg = {
           url: String(body.url || "").trim() || prev.url || "http://127.0.0.1:3000",
           token: "token" in body ? String(body.token || "").trim() : prev.token,
+          consoleUrl: "consoleUrl" in body
+            ? (String(body.consoleUrl || "").trim() || prev.consoleUrl)
+            : prev.consoleUrl,
+          consolePassword: "consolePassword" in body
+            ? String(body.consolePassword || "")
+            : prev.consolePassword,
         };
         return json(res, 200, { ok: true, data: writeOnebot(cfg) });
+      }
+
+      // SnowLuma 控制台密码存一次：收到就写进 onebot.json，顺便试登一次看看对不对
+      if (method === "POST" && url === "/api/console") {
+        const body = await readBody(req);
+        const prev = readOnebot(db);
+        const pw = String(body.password || "");
+        const cu = String(body.url || "").trim() || prev.consoleUrl || "http://127.0.0.1:5099";
+        // 只改地址：直接把地址落盘，不碰密码
+        if (!pw) {
+          if (!String(body.url || "").trim()) {
+            return json(res, 400, { ok: false, error: "密码和地址至少给一个" });
+          }
+          const only = { ...prev, consoleUrl: cu };
+          writeOnebot(only);
+          return json(res, 200, { ok: true, data: { url: cu, verified: null } });
+        }
+
+        let verified = null;
+        try {
+          const r = await fetch(cu.replace(/\/+$/, "") + "/api/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ password: pw }),
+            signal: AbortSignal.timeout(4000),
+          });
+          verified = r.status === 200;
+        } catch { verified = null; }
+
+        const cfg = { ...prev, consoleUrl: cu, consolePassword: pw };
+        writeOnebot(cfg);
+        return json(res, 200, { ok: true, data: { url: cu, verified } });
       }
 
       // ── 在线更新 ───────────────────────────────
@@ -1543,28 +2032,44 @@ export async function createServer({ dataDir, dbPath, port = 5173, host = "127.0
       }
 
       if (method === "GET" && url.split("?")[0] === "/api/token-usage") {
-        // 账本路径：data-location.json 里有就用，否则用默认
-        let ledgerPath = DEFAULT_TOKEN_LEDGER;
-        try {
-          const locFile = join(HERE, "..", "..", "data-location.json");
-          if (existsSync(locFile)) {
-            const loc = JSON.parse(readFileSync(locFile, "utf8"));
-            if (loc && typeof loc.tokenUsageFile === "string" && loc.tokenUsageFile.trim()) {
-              ledgerPath = loc.tokenUsageFile;
-            }
-          }
-        } catch {
-          // 读不到就用默认
-        }
         const hours = Math.max(
           0,
           Math.min(24 * 90, Number(new URL(url, "http://x").searchParams.get("hours")) || 0)
         );
-        return json(res, 200, { ok: true, data: readTokenLedger(ledgerPath, hours) });
+
+        // 每次请求先把 QQ 账本同步进库（幂等，同一行覆盖）
+        const sync = syncDshToDb(db.store);
+
+        // 优先读库：账本哪天丢了历史还在
+        const fromDb = dbTokenRecords(db.store, hours);
+        if (fromDb && fromDb.length) {
+          const data = aggregateTokenRecords(fromDb, hours, "库（已从 QQ 账本同步）");
+          data.sync = sync;
+          data.range = db.store.tokenUsageRange?.() || null;
+          data.source = "库";
+          return json(res, 200, { ok: true, data });
+        }
+
+        // 库还空：直接读账本
+        const found = findUsageLedger();
+        const data = readTokenLedger(found.path, hours);
+        data.sync = sync;
+        data.source = found.kind || "账本直读";
+        return json(res, 200, { ok: true, data });
       }
 
       if (method === "GET" && url === "/api/decay-preview") {
         return json(res, 200, { ok: true, data: { plan: db.planDecay() } });
+      }
+
+      // 记忆海：整座库画成三维星海的数据。vault=1 才带总库幻影（总库可能很大，默认不画）
+      if (method === "GET" && url.split("?")[0] === "/api/sea") {
+        const q = new URL(url, "http://x").searchParams;
+        const scene = buildSeaScene(db.store, db.getConfig(), {
+          now: Date.now(),
+          vault: q.get("vault") === "1",
+        });
+        return json(res, 200, { ok: true, data: scene });
       }
 
       return json(res, 404, { ok: false, error: "没这个接口" });
@@ -1572,6 +2077,8 @@ export async function createServer({ dataDir, dbPath, port = 5173, host = "127.0
 
     // ── 静态文件 ──────────────────────────────────────
     if (url === "/" || url.startsWith("/?")) {
+      // 主页 = 记忆海。登录过直接看海，没登录先给登录页
+      if (sessionOf(req) && (await serveFile(res, join(HERE, "sea.html")))) return;
       if (await serveFile(res, join(HERE, "login.html"))) return;
     }
 

@@ -71,6 +71,66 @@ export class Store {
     this.setMeta("updated_at", String(now));
   }
 
+  /**
+   * 把一批用量记录存进来（按 天+provider+模型 覆盖）
+   *
+   * 同步是幂等的：同一天同一家同一个模型跑几次都只会更新那一行，
+   * 所以可以每次打开面板都同步一遍，不会重复计账。
+   */
+  upsertTokenUsage(rows = []) {
+    if (!rows.length) return 0;
+    const stmt = this.db.prepare(
+      `INSERT INTO token_usage(day, provider, model, hit, miss, write, output, calls, cost, synced_at)
+       VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(day, provider, model) DO UPDATE SET
+         hit = excluded.hit, miss = excluded.miss, write = excluded.write,
+         output = excluded.output, calls = excluded.calls, cost = excluded.cost,
+         synced_at = excluded.synced_at`
+    );
+    const now = Date.now();
+    let n = 0;
+    for (const r of rows) {
+      try {
+        stmt.run(
+          String(r.day),
+          String(r.provider),
+          String(r.model),
+          Number(r.hit) || 0,
+          Number(r.miss) || 0,
+          Number(r.write) || 0,
+          Number(r.output) || 0,
+          Number(r.calls) || 0,
+          Number(r.cost) || 0,
+          now
+        );
+        n++;
+      } catch {
+        // 一条坏数据不该让整批同步失败
+      }
+    }
+    return n;
+  }
+
+  /** 读用量记录，按天升序 */
+  readTokenUsage(hours = 0) {
+    const cutoffDay = hours > 0
+      ? new Date(Date.now() - hours * 3600_000 + 8 * 3600_000).toISOString().slice(0, 10)
+      : null;
+    const sql = cutoffDay
+      ? "SELECT * FROM token_usage WHERE day >= ? ORDER BY day ASC"
+      : "SELECT * FROM token_usage ORDER BY day ASC";
+    const stmt = this.db.prepare(sql);
+    return cutoffDay ? stmt.all(cutoffDay) : stmt.all();
+  }
+
+  /** 用量表里有多少行、覆盖到哪天 */
+  tokenUsageRange() {
+    const r = this.db
+      .prepare("SELECT count(*) AS n, MIN(day) AS first, MAX(day) AS last FROM token_usage")
+      .get();
+    return { rows: r?.n || 0, first: r?.first || null, last: r?.last || null };
+  }
+
   close() {
     try { this.db.close(); } catch { /* 已关闭 */ }
   }
@@ -266,6 +326,11 @@ export class Store {
     return this.db
       .prepare("SELECT * FROM vault WHERE text LIKE ? ORDER BY ts DESC LIMIT ?")
       .all(`%${keyword}%`, limit);
+  }
+
+  /** 总库按时间倒着取一批（记忆海画幻影用，只读） */
+  listVault(limit = 400) {
+    return this.db.prepare("SELECT * FROM vault ORDER BY ts DESC LIMIT ?").all(limit);
   }
 
   vaultCount() {

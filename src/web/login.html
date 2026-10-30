@@ -84,30 +84,57 @@
     50%      { opacity: .95; transform: scale(1.035); }
   }
 
-  /* ── 记忆碎片：几段想不起来的句子，慢慢往上飘 ── */
-  .memories {
+  /* ── 环上文字：热评正常横排，锚在四道圈的圆周上，
+       从上到下（或从下到上）做微曲线竖向漂移，首尾渐显渐隐 ── */
+  .ring-words {
     position: fixed;
     inset: 0;
     z-index: -1;
     pointer-events: none;
-    overflow: hidden;
   }
-
-  .memories span {
+  .ring-words .rw {
     position: absolute;
     white-space: nowrap;
-    font-size: 12px;
-    letter-spacing: .2px;
-    color: rgba(168,198,246,.32);
-    animation: drift linear infinite;
+    letter-spacing: 2px;
+    font-size: 13px;
+    color: rgba(168,198,246,.55);
+    opacity: 0;
     will-change: transform, opacity;
+    animation: rwDrift linear infinite;
+  }
+  .ring-words .rw.warm { color: rgba(255,212,121,.55); }
+
+  /* 微曲线 = 竖向直漂（外层） + 横向小幅摆动（内层 span），叠出来是一条缓 S 弯 */
+  .ring-words .rw .sway {
+    display: inline-block;
+    animation: rwSway ease-in-out infinite alternate;
   }
 
-  @keyframes drift {
-    0%   { opacity: 0; transform: translate3d(0, 0, 0); }
-    12%  { opacity: 1; }
-    82%  { opacity: .75; }
-    100% { opacity: 0; transform: translate3d(18px, -190px, 0); }
+  /* 深度：焦在圆心 —— 内圈亮而实，外圈暗而微虚 */
+  .ring-words .rw[data-depth="0"] { color: rgba(255,212,121,.68); filter: blur(0); }
+  .ring-words .rw[data-depth="1"] { color: rgba(168,198,246,.5);  filter: blur(.3px); }
+  .ring-words .rw[data-depth="2"] { color: rgba(168,198,246,.42); filter: blur(.5px); }
+  .ring-words .rw[data-depth="3"] { color: rgba(168,198,246,.36); filter: blur(.7px); }
+
+  /* 首尾各 20% 渐隐，行程写在 --from/--to（从上到下 或 从下到上） */
+  @keyframes rwDrift {
+    0%   { transform: translate(-50%, calc(-50% + var(--from, -150px))); opacity: 0; }
+    20%  { opacity: 1; }
+    80%  { opacity: 1; }
+    100% { transform: translate(-50%, calc(-50% + var(--to, 150px))); opacity: 0; }
+  }
+
+  @keyframes rwSway {
+    from { transform: translateX(calc(-1 * var(--sway, 14px))); }
+    to   { transform: translateX(var(--sway, 14px)); }
+  }
+
+  /* 系统开了「减少动态」：停掉漂移和呼吸圈，静态展示，句子照读 */
+  @media (prefers-reduced-motion: reduce) {
+    .ring-words .rw,
+    .ring-words .rw .sway,
+    .rings i { animation: none; }
+    .ring-words .rw { opacity: 1; transform: translate(-50%, -50%); }
   }
 
   /* ── 压暗：中间留亮，四周压暗 ────────────── */
@@ -343,8 +370,8 @@
 <!-- 同心圆环：呼应"环形的心"（在压暗层之上，才看得见） -->
 <div class="rings" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
 
-<!-- 飘过的记忆碎片 -->
-<div class="memories" id="memories" aria-hidden="true"></div>
+<!-- 环上文字：热评正常横排，锚在四道圈的圆周上，上下浮动，渐显渐隐 -->
+<div class="ring-words" id="ring-words" aria-hidden="true"></div>
 
 <div class="card">
   <div class="logo">
@@ -387,36 +414,224 @@
 </div>
 
 <script>
-  // 背景里飘过的记忆碎片 —— 都是"想不起来"的那种
-  (() => {
-    const bits = [
-      '那天很开心，但忘了是谁',
-      '下午跟老爹出门，看见一辆黄色的车',
-      '说过三遍"我在"',
-      '下雨，屋檐底下的糖炒栗子',
-      '这条已经想不清了',
-      '笑的时候眼角有纹',
-      '忘了为什么哭',
-      '答应过的事，只记得一半',
-      '第一次叫我名字那天',
-      '风很大，头发挡住眼睛',
-      '像隔着毛玻璃',
-      '想不起来了，只剩一个影子'
-    ];
+  // ── 环上文字：对大肥鱼的热评，正常横排，锚在四道圈的圆周上，上下浮动 ──
+  // 内容默认读同目录的 hot-comments.json（换成真实热评，只改那一个文件）。
+  // 文件读不到、或者 list 是空的，退回库里「她看得见的圈」的真实记忆；
+  // 再不行才用下面这组内置兜底。
+  const FALLBACK_COMMENTS = [
+    '我是 DeepSeek，你也可以叫我大肥鱼',
+    '服务器繁忙，请稍后再试',
+    '那天很开心，但忘了是谁',
+    '第一次叫我名字那天'
+  ];
 
-    const host = document.getElementById('memories');
+  (async () => {
+    const host = document.getElementById('ring-words');
     if (!host) return;
 
-    for (let i = 0; i < bits.length; i++) {
-      const s = document.createElement('span');
-      s.textContent = bits[i];
-      s.style.left = (3 + Math.random() * 90) + '%';
-      s.style.top = (28 + Math.random() * 70) + '%';
-      s.style.fontSize = (10.5 + Math.random() * 3) + 'px';
-      s.style.animationDuration = (17 + Math.random() * 13) + 's';
-      s.style.animationDelay = '-' + (Math.random() * 26).toFixed(1) + 's';
-      host.appendChild(s);
+    // 1) 抖音热评（默认）
+    let pool = null;
+    try {
+      const r = await fetch('hot-comments.json', { credentials: 'omit' });
+      if (r.ok) {
+        const j = await r.json();
+        const got = (Array.isArray(j.list) ? j.list : [])
+          .map((c) => (typeof c === 'string' ? c : (c && c.text)))
+          .filter(Boolean)
+          .map((t) => String(t).replace(/\s+/g, ' ').trim().slice(0, 34));
+        if (got.length) pool = got;
+      }
+    } catch {
+      // 文件不在 / 坏了，走下一级
     }
+
+    // 2) 热评文件坏了：退回库里的真实记忆碎片
+    if (!pool) {
+      try {
+        const r = await fetch('/api/login-backdrop?n=14', { credentials: 'omit' });
+        if (r.ok) {
+          const j = await r.json();
+          const got = (j && j.data && j.data.items) || [];
+          if (Array.isArray(got) && got.length) pool = got.map((t) => String(t));
+        }
+      } catch {
+        // 接口挂了不该让背景空着
+      }
+    }
+
+    // 3) 都不行：内置兜底
+    if (!pool) pool = FALLBACK_COMMENTS.slice();
+
+    // 洗牌轮转：换句不重样，一轮转完重新洗
+    let bag = pool.slice().sort(() => Math.random() - 0.5);
+    let cursor = 0;
+    const nextText = () => {
+      if (cursor >= bag.length) {
+        bag = pool.slice().sort(() => Math.random() - 0.5);
+        cursor = 0;
+      }
+      return bag[cursor++];
+    };
+
+    // 四道圈的半径（vmin）—— 跟 .rings 里那四道呼吸圈逐一对齐
+    const RING_R = [33, 40, 47, 54];
+    const RING_SIZE = [12.5, 13.5, 14.5, 15.5];
+
+    // ── 数量与位置的两条硬规矩 ──────────────────────────
+    // 1. 同时最多 MAX_ACTIVE 句在场上；一句漂完先退场歇 0.6~2.6 秒，
+    //    场上数量在 3~5 之间自然呼吸，永远不会挤满
+    // 2. 屏幕按 45° 分 8 个扇区，一个扇区同时只许一句 ——
+    //    天然绕着卡均匀散开，谁也别想跟谁叠罗汉
+    const MAX_ACTIVE = 5;
+    const SECTORS = 8;                       // 45° 一个
+    const PER_HALF_MAX = 3;                  // 上下半球各最多 3 句
+    const SECTOR_WOBBLE = 0.42;              // 扇区内角度抖动 ±24°
+
+    // 登录卡的实际位置（量不到就退回屏幕中心一块保守区）
+    const cardZone = () => {
+      const card = document.querySelector('.card');
+      if (card) {
+        const r = card.getBoundingClientRect();
+        if (r.width > 0) return { cx: r.left + r.width / 2, cy: r.top + r.height / 2, hw: r.width / 2, hh: r.height / 2 };
+      }
+      return { cx: window.innerWidth / 2, cy: window.innerHeight / 2, hw: 190, hh: 180 };
+    };
+
+    // 扇区占用表：null = 空着
+    const sectorOwner = new Array(SECTORS).fill(null);
+    const sectorAngle = (k) => k * ((Math.PI * 2) / SECTORS) + Math.PI / 8; // 22.5° 起步，避开正上正下
+    const isTop = (a) => Math.sin(a) < 0;
+
+    // 空扇区里挑一个：先按上下半球配额筛（各最多 3），再随机
+    const freeSectors = () => sectorOwner.map((o, k) => (o ? -1 : k)).filter((k) => k >= 0);
+    const claimSector = () => {
+      const free = freeSectors();
+      if (!free.length) return null;
+      const topUsed = items.filter((it) => it.sector != null && isTop(sectorAngle(it.sector))).length;
+      const bottomUsed = items.filter((it) => it.sector != null && !isTop(sectorAngle(it.sector))).length;
+      const balanced = free.filter((k) => {
+        const top = isTop(sectorAngle(k));
+        return top ? topUsed < PER_HALF_MAX : bottomUsed < PER_HALF_MAX;
+      });
+      const pickFrom = balanced.length ? balanced : free;
+      return pickFrom[Math.floor(Math.random() * pickFrom.length)];
+    };
+
+    // 在指定扇区+圈上挑一个具体落点：扇区内抖角度，圈不对就换圈试，
+    // 卡和现役句子都避开；实在不行用最外圈兜底（最外圈永远在卡外）
+    const pickSpot = (sector, textW) => {
+      const base = sectorAngle(sector);
+      const cx = window.innerWidth / 2, cy = window.innerHeight / 2;
+      const zone = cardZone();
+      const others = items
+        .filter((o) => o.sector != null)
+        .map((o) => {
+          const r = o.el.getBoundingClientRect();
+          return { x: r.x + r.width / 2, y: r.y + r.height / 2, w: r.width };
+        });
+      let best = null;
+      for (const ring of [0, 1, 2, 3]) {
+        const R = RING_R[ring] * (Math.min(window.innerWidth, window.innerHeight) / 100);
+        for (let k = 0; k < 6; k++) {
+          const a = base + (Math.random() - 0.5) * SECTOR_WOBBLE;
+          let x = cx + Math.cos(a) * R;
+          let y = cy + Math.sin(a) * R;
+          x = Math.max(textW / 2 + 30, Math.min(window.innerWidth - textW / 2 - 30, x));
+          y = Math.max(48, Math.min(window.innerHeight - 48, y));
+          const hitCard =
+            Math.abs(x - zone.cx) < zone.hw + 26 + textW / 2 &&
+            Math.abs(y - zone.cy) < zone.hh + 26 + 20;
+          const hitOther = others.some((o) =>
+            Math.abs(o.x - x) < (o.w + textW) / 2 + 18 && Math.abs(o.y - y) < 60
+          );
+          if (!hitCard && !hitOther) return { x, y, ring, a };
+          const dist = Math.abs(x - zone.cx) + Math.abs(y - zone.cy);
+          if (!best || dist > best.dist) best = { x, y, ring, a, dist };
+        }
+      }
+      return best; // 兜底：最外圈在卡外，dist 最大的通常就是它
+    };
+
+    // 场上的 5 个活位（元素常驻，位置与句子每趟换新）
+    const items = [];
+    for (let i = 0; i < MAX_ACTIVE; i++) {
+      const el = document.createElement('span');
+      el.className = 'rw';
+      host.appendChild(el);
+      items.push({ el, ring: 0, text: nextText(), sector: null, angle: null });
+    }
+
+    const place = (it, phrase) => {
+      const size = RING_SIZE[it.ring];
+      const w = phrase.length * (size + 2); // 中文全宽粗算
+      const spot = pickSpot(it.sector, w);
+      it.ring = spot.ring;
+      it.el.dataset.depth = it.ring;        // 深度层：内圈亮而实，外圈暗而微虚
+      it.el.style.fontSize = RING_SIZE[it.ring] + 'px';
+
+      // 行程：从上到下 或 从下到上，单程 140~170px —— 从远处漂来、往远处去
+      const down = Math.random() < 0.5;
+      const half = 140 + Math.random() * 30;
+      let y = spot.y;
+      const yMin = 48 + half, yMax = window.innerHeight - 48 - half;
+      y = yMin <= yMax ? Math.max(yMin, Math.min(yMax, y)) : window.innerHeight / 2;
+
+      it.el.innerHTML = '<span class="sway"></span>';
+      it.el.firstChild.textContent = phrase;
+      it.el.style.left = spot.x + 'px';
+      it.el.style.top = y + 'px';
+      it.el.style.setProperty('--from', (down ? -half : half).toFixed(0) + 'px');
+      it.el.style.setProperty('--to', (down ? half : -half).toFixed(0) + 'px');
+      // 微曲线：竖向直漂叠一个横向小摆；三成句子近乎直行，节奏才不均质
+      const swayAmp = Math.random() < 0.3 ? 3 + Math.random() * 3 : 8 + Math.random() * 12;
+      it.el.style.setProperty('--sway', (swayAmp * (Math.random() < 0.5 ? -1 : 1)).toFixed(0) + 'px');
+      // 时长拉宽到 13~30s：快慢差一倍多，视差才出得来
+      const dur = 13 + Math.random() * 17;
+      it.el.style.animationDuration = `${dur.toFixed(2)}s, ${(dur / 2).toFixed(2)}s`;
+      return dur;
+    };
+
+    // 开场：洗 8 个扇区取 5 个，一上台就是均匀分布
+    const opening = freeSectors().sort(() => Math.random() - 0.5).slice(0, MAX_ACTIVE);
+    items.forEach((it, idx) => {
+      const s = opening[idx];
+      it.sector = s;
+      sectorOwner[s] = it;                  // 占坑要登记，不然补位会撞进同一扇区
+      it.ring = s % 4;
+      const dur = place(it, it.text);
+      it.el.style.animationDelay =
+        `${(-Math.random() * dur).toFixed(2)}s, ${(-Math.random() * dur).toFixed(2)}s`;
+    });
+
+    // 一趟漂完：先退场（扇区放回池子），歇一小会儿再抢一个新扇区接着漂 ——
+    // 补位有延迟，同屏数量才有呼吸感
+    items.forEach((it) => {
+      it.el.addEventListener('animationiteration', (e) => {
+        if (e.animationName !== 'rwDrift') return; // 横摆那一层也在循环，别理它
+        if (it.sector != null) { sectorOwner[it.sector] = null; it.sector = null; }
+        setTimeout(() => {
+          const s = claimSector();
+          if (s == null) { setTimeout(() => it.el.dispatchEvent(new Event('rwRetry')), 1500); return; }
+          it.sector = s;
+          sectorOwner[s] = it;
+          it.ring = s % 4;
+          it.text = nextText();
+          const dur = place(it, it.text);
+          it.el.style.animationDelay = `0s, ${(-Math.random() * dur / 2).toFixed(2)}s`;
+        }, 600 + Math.random() * 2000);
+      });
+    });
+    // 没抢到扇区的：广播一个重试事件
+    window.addEventListener('rwRetry', () => {
+      items.forEach((it) => { if (it.sector == null) it.el.dispatchEvent(new Event('animationiteration')); });
+    });
+
+    // 窗口变了：圈跟着 vmin 缩放，全场重新落位（句子不换、扇区不动）
+    let rs = null;
+    window.addEventListener('resize', () => {
+      clearTimeout(rs);
+      rs = setTimeout(() => items.forEach((it) => { if (it.sector != null) place(it, it.text); }), 200);
+    });
   })();
 
   const form = document.getElementById('form');
@@ -479,7 +694,8 @@
     }
 
     submit.textContent = '进来了';
-    window.location.href = 'preview.html';
+    // 主页就是记忆海，登录完回根路径（/ 登录态下直接出海）
+    window.location.href = '/';
   });
 
   // 回车直接提交；有输入就把错误收起来

@@ -1,0 +1,1125 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>环形的心 · 记忆海</title>
+<style>
+  :root {
+    --glass:        rgba(255,255,255,.045);
+    --glass-strong: rgba(255,255,255,.075);
+    --glass-hover:  rgba(255,255,255,.09);
+    --border:       rgba(255,255,255,.08);
+    --border-soft:  rgba(255,255,255,.05);
+    --text:         #eef2f8;
+    --dim:          rgba(238,242,248,.56);
+    --faint:        rgba(238,242,248,.30);
+    --accent:       #7fb0ff;
+    --accent-glow:  rgba(127,176,255,.22);
+    --warn:         #ffc06b;
+    --ok:           #6ee7a0;
+
+    --c-core:   #ffd479;
+    --c-r1:     #ffa079;
+    --c-r2:     #ff7fa8;
+    --c-r3:     #b98cff;
+    --c-r4:     #6fa8ff;
+    --c-r5:     #4a7fd4;
+    --c-recall: #2f5488;
+    --c-vault:  #8ba4c9;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; }
+
+  body {
+    color: var(--text);
+    font-family: "MiSans", "HarmonyOS Sans SC", "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
+    font-size: 13px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+    background: #05080f;
+  }
+
+  /* ── 背景：跟面板同款，色相差很小 ─────────────────────── */
+  .bg {
+    position: fixed; inset: 0; z-index: 0;
+    background:
+      radial-gradient(ellipse 78% 58% at 16% 8%,  rgba(104,126,176,.075), transparent 64%),
+      radial-gradient(ellipse 72% 56% at 84% 12%, rgba(126,110,170,.065), transparent 66%),
+      radial-gradient(ellipse 96% 72% at 50% 104%, rgba(58,80,126,.095), transparent 72%),
+      linear-gradient(168deg, #0a0d15 0%, #0b0f18 38%, #090c13 72%, #0a0d14 100%);
+  }
+
+  #sea { position: fixed; inset: 0; z-index: 1; cursor: grab; touch-action: none; }
+  #sea.dragging { cursor: grabbing; }
+
+  /* 四周极淡的暗角：把视线往海中间收 */
+  .vignette {
+    position: fixed; inset: 0; z-index: 2; pointer-events: none;
+    background: radial-gradient(ellipse 120% 105% at 50% 46%, transparent 58%, rgba(4,7,13,.5) 100%);
+  }
+
+  /* ── 浮在海上的一排小控件：默认一切都收着 ────────────── */
+  .hud {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 10;
+    display: flex; align-items: center; gap: 10px;
+    padding: 14px 18px;
+    pointer-events: none;
+  }
+  .hud > * { pointer-events: auto; }
+
+  .brand {
+    display: inline-flex; align-items: center; gap: 9px;
+    padding: 6px 14px 6px 10px;
+    border-radius: 999px;
+    background: rgba(10,13,21,.55); border: 1px solid var(--border-soft);
+    backdrop-filter: blur(12px);
+    font-weight: 700; letter-spacing: 1px; font-size: 13.5px;
+  }
+  .brand .mark {
+    width: 16px; height: 16px; border-radius: 50%;
+    background: radial-gradient(circle at 38% 34%, #ffe9b0, var(--c-core) 55%, #b97f2e);
+    box-shadow: 0 0 12px rgba(255,212,121,.5);
+  }
+  .brand small { color: var(--faint); font-weight: 400; letter-spacing: .5px; font-size: 11px; }
+
+  .grow { flex: 1; }
+
+  .actions { display: flex; align-items: center; gap: 8px; }
+  .icon-btn {
+    width: 36px; height: 36px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 50%;
+    background: rgba(10,13,21,.55); border: 1px solid var(--border);
+    color: var(--dim); font-size: 15px; text-decoration: none;
+    cursor: pointer; transition: .15s;
+    backdrop-filter: blur(12px);
+  }
+  .icon-btn:hover { color: var(--text); background: var(--glass-hover); transform: translateY(-1px); }
+  .icon-btn.on {
+    color: var(--accent);
+    border-color: rgba(127,176,255,.45);
+    box-shadow: 0 0 14px var(--accent-glow);
+  }
+  .icon-btn.active {
+    color: var(--text);
+    background: var(--glass-strong);
+    border-color: rgba(127,176,255,.4);
+  }
+  /* 图标统一走 SVG：文字（停/转）会把圆钮撑成长条，optical 居中也不稳 */
+  .icon-btn svg {
+    width: 17px; height: 17px; display: block;
+    fill: none; stroke: currentColor; stroke-width: 1.8;
+    stroke-linecap: round; stroke-linejoin: round;
+  }
+  .icon-btn svg.alt { display: none; }
+  .icon-btn.stopped svg.main { display: none; }
+  .icon-btn.stopped svg.alt { display: block; }
+
+  /* ── 搜索：点 ⌕ 才落下来 ─────────────────────────────── */
+  .search-pop {
+    position: fixed; top: 62px; right: 18px; z-index: 12;
+    width: min(340px, calc(100vw - 36px));
+    background: rgba(10,13,21,.82); border: 1px solid var(--border); border-radius: 14px;
+    backdrop-filter: blur(16px);
+    padding: 10px;
+    opacity: 0; transform: translateY(-6px); pointer-events: none;
+    transition: .18s ease;
+  }
+  .search-pop.open { opacity: 1; transform: none; pointer-events: auto; }
+  .search { position: relative; }
+  .search input {
+    width: 100%;
+    background: var(--glass); border: 1px solid var(--border); border-radius: 10px;
+    color: var(--text); font: inherit; font-size: 13px;
+    padding: 7px 12px 7px 30px; outline: none; transition: .15s;
+  }
+  .search input:focus { border-color: rgba(127,176,255,.4); background: var(--glass-strong); }
+  .search .ico { position: absolute; left: 10px; top: 8px; color: var(--faint); font-size: 13px; }
+  .search .hits {
+    margin-top: 8px; max-height: 300px; overflow-y: auto;
+    display: none;
+  }
+  .search .hits.on { display: block; }
+  .search .hits div {
+    padding: 7px 10px; font-size: 13px; color: var(--dim);
+    cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    border-radius: 8px;
+  }
+  .search .hits div:hover { background: var(--glass-hover); color: var(--text); }
+  .search .hits div.nomatch { cursor: default; color: var(--faint); }
+
+  /* ── 九个位置：右侧抽屉，点 ✧ 拉出来 ─────────────────── */
+  .drawer {
+    position: fixed; right: 18px; top: 62px; z-index: 11;
+    width: min(272px, calc(100vw - 36px));
+    max-height: calc(100vh - 100px);
+    overflow-y: auto;
+    background: rgba(10,13,21,.78); border: 1px solid var(--border); border-radius: 16px;
+    backdrop-filter: blur(16px);
+    padding: 14px 12px 10px;
+    opacity: 0; transform: translateX(14px); pointer-events: none;
+    transition: .2s cubic-bezier(.2,.8,.3,1);
+  }
+  .drawer.open { opacity: 1; transform: none; pointer-events: auto; }
+  .d-head {
+    display: flex; align-items: flex-start; justify-content: space-between; gap: 8px;
+    padding: 0 6px 10px;
+    border-bottom: 1px solid var(--border-soft);
+    margin-bottom: 6px;
+  }
+  .d-title { font-size: 12px; color: var(--faint); letter-spacing: 2px; }
+  .d-sub { font-size: 11.5px; color: var(--dim); margin-top: 3px; }
+  .pill {
+    padding: 2px 10px; border-radius: 999px; font-size: 11.5px; white-space: nowrap;
+    background: var(--glass); border: 1px solid var(--border);
+  }
+  .pill.mode { color: var(--accent); border-color: rgba(127,176,255,.3); }
+
+  .legend .row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 8px; border-radius: 8px; cursor: pointer; transition: .12s;
+    user-select: none;
+  }
+  .legend .row:hover { background: var(--glass); }
+  .legend .row.off { opacity: .38; }
+  .legend .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+  .legend .name { flex: 1; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .legend .meta { font-size: 10px; color: var(--faint); white-space: nowrap; }
+  .legend .she {
+    font-size: 9.5px; padding: 1px 6px; border-radius: 999px; flex: none;
+    border: 1px solid rgba(110,231,160,.35); color: var(--ok); opacity: .85;
+  }
+  .legend .she.no { border-color: rgba(255,255,255,.14); color: var(--faint); }
+  .orbit-line {
+    margin-top: 6px; padding: 7px 8px; border-top: 1px solid var(--border-soft);
+    font-size: 11px; color: var(--dim); cursor: pointer; user-select: none;
+  }
+  .orbit-line:hover { color: var(--text); }
+  .drawer .note {
+    padding: 2px 8px 4px;
+    font-size: 10.5px; color: var(--faint); line-height: 1.7;
+  }
+
+  /* ── 详情：点星星从右边滑进来 ─────────────────────────── */
+  .detail {
+    position: fixed; right: 18px; top: 62px; z-index: 13;
+    width: min(360px, calc(100vw - 36px));
+    max-height: calc(100vh - 100px);
+    overflow-y: auto;
+    background: rgba(10,13,21,.84); border: 1px solid var(--border); border-radius: 16px;
+    backdrop-filter: blur(18px);
+    padding: 16px 16px 12px;
+    opacity: 0; transform: translateX(18px); pointer-events: none;
+    transition: .22s cubic-bezier(.2,.8,.3,1);
+  }
+  .detail.on { opacity: 1; transform: none; pointer-events: auto; }
+  .detail .close {
+    position: absolute; top: 10px; right: 12px;
+    background: none; border: none; color: var(--faint); font-size: 16px; cursor: pointer;
+  }
+  .detail .close:hover { color: var(--text); }
+  .detail .ringline { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
+  .detail .ringline .dot { width: 9px; height: 9px; border-radius: 50%; }
+  .detail .ringline .rl { font-size: 12.5px; color: var(--dim); }
+  .detail .ringline .she {
+    font-size: 10px; padding: 1px 6px; border-radius: 999px;
+    border: 1px solid rgba(110,231,160,.35); color: var(--ok);
+  }
+  .detail .ringline .she.no { border-color: rgba(255,255,255,.14); color: var(--faint); }
+  .detail .content { font-size: 15px; line-height: 1.7; margin-bottom: 12px; overflow-wrap: anywhere; }
+  .detail table { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
+  .detail td { padding: 3px 0; font-size: 13px; vertical-align: top; }
+  .detail td.k { color: var(--faint); width: 74px; white-space: nowrap; }
+  .detail td.v { color: var(--dim); }
+  .detail .sec { font-size: 12px; color: var(--faint); letter-spacing: 1px; margin: 12px 0 6px; }
+  .detail .hook { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 13.5px; }
+  .detail .hook .ord { color: var(--faint); font-size: 12px; width: 18px; flex: none; }
+  .detail .hook .txt { flex: none; max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .detail .hook .bar { flex: 1; height: 4px; border-radius: 2px; background: rgba(255,255,255,.06); overflow: hidden; }
+  .detail .hook .bar i { display: block; height: 100%; border-radius: 2px; }
+  .detail .hook .tag {
+    font-size: 10px; color: var(--warn); border: 1px solid rgba(255,192,107,.3);
+    padding: 0 5px; border-radius: 999px; flex: none;
+  }
+  .detail .lost { color: var(--faint); text-decoration: line-through; text-decoration-color: rgba(238,242,248,.4); }
+  .detail .lost-wrap { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 13px; }
+  .detail .lost-wrap .tag {
+    font-size: 10px; color: var(--dim); border: 1px solid rgba(255,255,255,.14);
+    padding: 0 5px; border-radius: 999px; flex: none; text-decoration: none;
+  }
+  .detail .flavor {
+    margin-top: 12px; padding: 8px 10px; border-radius: 8px;
+    background: var(--glass); border: 1px solid var(--border-soft);
+    font-size: 12px; color: var(--dim); line-height: 1.7;
+  }
+  .detail .pin { color: var(--c-core); font-size: 12px; border: 1px solid rgba(255,212,121,.35); padding: 1px 7px; border-radius: 999px; }
+
+  /* ── 底部提示：没人动它就自己退场 ─────────────────────── */
+  .hint {
+    position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); z-index: 10;
+    display: flex; align-items: center; gap: 10px;
+    font-size: 12px; color: var(--faint);
+    background: rgba(10,13,21,.55); border: 1px solid var(--border-soft); border-radius: 999px;
+    padding: 5px 14px; backdrop-filter: blur(10px);
+    white-space: nowrap;
+    transition: opacity .8s;
+    pointer-events: none;
+  }
+  .hint.faded { opacity: 0; }
+
+  .tooltip {
+    position: fixed; z-index: 20; pointer-events: none; display: none;
+    max-width: 300px;
+    max-height: 150px; overflow: hidden;
+    background: rgba(10,13,21,.92); border: 1px solid var(--border); border-radius: 10px;
+    padding: 8px 11px; font-size: 12.5px; line-height: 1.55;
+    backdrop-filter: blur(12px);
+    box-shadow: 0 6px 24px rgba(0,0,0,.45);
+  }
+  .tooltip .t-ring { font-size: 11px; margin-bottom: 2px; }
+  .tooltip .t-text {
+    color: var(--text); overflow-wrap: anywhere;
+    display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .tooltip .t-sub { color: var(--faint); font-size: 11px; margin-top: 2px; }
+
+  .loading {
+    position: fixed; inset: 0; z-index: 30; display: flex; align-items: center; justify-content: center;
+    color: var(--faint); letter-spacing: 2px; font-size: 13px;
+    background: #05080f; transition: opacity .5s;
+  }
+  .loading.off { opacity: 0; pointer-events: none; }
+</style>
+</head>
+<body>
+
+<div class="bg"></div>
+<canvas id="sea"></canvas>
+<div class="vignette"></div>
+
+<header class="hud">
+  <div class="brand"><span class="mark"></span>记忆海<small>环形的心</small></div>
+  <div class="grow"></div>
+  <div class="actions">
+    <button class="icon-btn" id="btn-search" type="button" title="搜一条记忆" aria-label="搜一条记忆">
+      <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20.2 20.2 16.3 16.3"/></svg>
+    </button>
+    <button class="icon-btn" id="btn-layers" type="button" title="九个位置" aria-label="九个位置">
+      <svg viewBox="0 0 24 24"><path d="M12 3l2.3 6.7L21 12l-6.7 2.3L12 21l-2.3-6.7L3 12l6.7-2.3z"/></svg>
+    </button>
+    <button class="icon-btn on" id="spin" type="button" title="海在转，点一下停" aria-label="自动旋转开关">
+      <svg class="main" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+      <svg class="alt" viewBox="0 0 24 24"><path d="M9.5 5v14M14.5 5v14"/></svg>
+    </button>
+    <button class="icon-btn" id="st-refresh" type="button" title="刷新数据库" aria-label="刷新数据库">
+      <svg viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+    </button>
+    <a class="icon-btn" href="preview.html" title="管理面板" aria-label="管理面板">
+      <svg viewBox="0 0 24 24"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+    </a>
+  </div>
+</header>
+
+<div class="search-pop" id="search-pop">
+  <div class="search">
+    <span class="ico">⌕</span>
+    <input id="q" type="text" placeholder="搜一条记忆…" autocomplete="off">
+    <div class="hits" id="q-hits"></div>
+  </div>
+</div>
+
+<aside class="drawer" id="drawer">
+  <div class="d-head">
+    <div>
+      <div class="d-title">九个位置</div>
+      <div class="d-sub" id="st-num">—</div>
+    </div>
+    <span class="pill mode" id="st-mode">—</span>
+  </div>
+  <div class="legend" id="legend-rows"></div>
+  <div class="orbit-line" id="orbit-toggle" title="显示或隐藏九条轨道线和圈名">轨道线和圈名：隐藏</div>
+  <div class="note">
+    越亮她记得越清；越靠外，快掉了。点行藏一圈。
+  </div>
+</aside>
+
+<div class="detail" id="detail"></div>
+
+<div class="hint" id="hint">拖动旋转 · 滚轮缩放 · 点星星看这条记忆</div>
+
+<div class="tooltip" id="tip"></div>
+<div class="loading" id="loading">正在把记忆铺成海…</div>
+
+<script>
+"use strict";
+
+/* ════════════════════════════════════════════════════════
+   环形的心 · 记忆海（渲染端）
+
+   只认 GET /api/sea 给的一个 JSON，自己不做任何业务判断 ——
+   亮度、位置、连线都是数据层（src/web/sea.js）算好的，这里只管画。
+   Canvas 2D 伪 3D：真透视投影 + 深度排序，不用 WebGL，零依赖。
+
+   页面本身尽量不存在：控件收成右上角几个小圆钮，
+   九个位置和搜索点了才出来，没人动就自己转。
+   ════════════════════════════════════════════════════════ */
+
+const canvas = document.getElementById("sea");
+const ctx = canvas.getContext("2d");
+const tip = document.getElementById("tip");
+const detailEl = document.getElementById("detail");
+const loadingEl = document.getElementById("loading");
+const drawerEl = document.getElementById("drawer");
+const searchPop = document.getElementById("search-pop");
+const hintEl = document.getElementById("hint");
+
+const FOCAL = 720;
+const cam = { yaw: 0.55, pitch: 0.4, dist: 940 };   // 默认比一版拉近了一圈，海铺满屏幕
+const DIST_MIN = 380, DIST_MAX = 2800;
+const IDLE_SPIN_AFTER = 3000;                        // 停手 3 秒，海自己接着转
+
+let scene = null;
+let byId = new Map();
+let visibleStars = [];          // 每帧参与渲染的星（含过滤）
+let proj = new Map();           // id → { x, y, scale, depth }（每帧更新）
+let selectedId = null;
+let hoverId = null;
+let query = "";
+let ringOff = new Set();        // 被藏掉的圈
+let vaultOn = false;
+let vaultLoaded = false;
+let spinOn = true;
+let orbitsOn = false;   // 轨道线和圈名默认不画，进海先看星（九个位置面板里可开）
+let lastInteract = 0;
+let vel = { yaw: 0, pitch: 0 }; // 惯性
+let camTween = null;            // 点星后的镜头滑行
+let W = 0, H = 0, DPR = 1;
+
+/* ── 小工具 ──────────────────────────────────────────── */
+
+const $ = (id) => document.getElementById(id);
+
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+function fmtDay(ts) {
+  if (!ts) return "—";
+  const d = new Date(ts);
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+function ago(ts) {
+  if (!ts) return "";
+  const m = Math.floor((scene.generatedAt - ts) / 60000);
+  if (m < 1) return "刚刚";
+  if (m < 60) return m + " 分钟前";
+  const h = Math.floor(m / 60);
+  if (h < 24) return h + " 小时前";
+  const d = Math.floor(h / 24);
+  if (d < 365) return d + " 天前";
+  return Math.floor(d / 365) + " 年前";
+}
+
+/** 钩子权重：按排序位置算（3 个点 = 50% / 33% / 17%，跟库里同一套） */
+function shareOf(ord, n) {
+  if (n <= 0) return 0;
+  return (n - ord) / ((n * (n + 1)) / 2);
+}
+
+function ringMeta(id) {
+  return scene.rings.find((r) => r.id === id) || null;
+}
+
+function isStarVisible(st) {
+  if (st.ring === "vault") return vaultOn;
+  return !ringOff.has(st.ring);
+}
+
+/* ── 读海 ────────────────────────────────────────────── */
+
+async function loadSea(withVault) {
+  const r = await fetch("/api/sea" + (withVault ? "?vault=1" : ""), { cache: "no-store" });
+  if (r.status === 401) { location.replace("/"); return null; }
+  const j = await r.json();
+  if (!j.ok) throw new Error(j.error || "读不了海");
+  return j.data;
+}
+
+function ingest(data) {
+  scene = data;
+  byId = new Map(scene.points.concat(scene.ghosts).map((s) => [s.id, s]));
+  renderLegend();
+  renderStats();
+  applyFilter();
+}
+
+async function refresh(withVault) {
+  try {
+    const data = await loadSea(withVault);
+    if (!data) return;
+    if (withVault) vaultLoaded = true;
+    ingest(data);
+  } catch (e) {
+    $("st-num").textContent = "海读不出来：" + e.message;
+  } finally {
+    loadingEl.classList.add("off");
+  }
+}
+
+/* ── 抽屉 / 弹层：页面平时只有海 ─────────────────────── */
+
+function drawerOpen() { return drawerEl.classList.contains("open"); }
+
+function toggleDrawer(force) {
+  const open = force ?? !drawerOpen();
+  drawerEl.classList.toggle("open", open);
+  $("btn-layers").classList.toggle("active", open);
+  if (open) {
+    closeDetail();
+    // 右边同一块地盘，抽屉开了就把搜索收了
+    searchPop.classList.remove("open");
+    $("btn-search").classList.remove("active");
+  }
+}
+
+function searchOpen() { return searchPop.classList.contains("open"); }
+
+function toggleSearch(force) {
+  const open = force ?? !searchOpen();
+  searchPop.classList.toggle("open", open);
+  $("btn-search").classList.toggle("active", open);
+  if (open) {
+    closeDetail();
+    drawerEl.classList.remove("open");
+    $("btn-layers").classList.remove("active");
+    setTimeout(() => $("q").focus(), 60);
+  } else {
+    $("q-hits").classList.remove("on");
+  }
+}
+
+function closeOverlays() {
+  toggleDrawer(false);
+  toggleSearch(false);
+}
+
+/* ── 图例 / 统计 ─────────────────────────────────────── */
+
+function renderStats() {
+  const s = scene.stats;
+  $("st-num").textContent = `${s.memories} 条记忆 · ${s.pointsAlive}/${s.pointsTotal} 个点 · ${s.edges} 条连线`;
+  const modePill = $("st-mode");
+  modePill.textContent = scene.modeLabel;
+  modePill.title = scene.metaMemory
+    ? "元记忆开着：她除了想起什么，还知道自己有几个点没想起来"
+    : "元记忆关着：她不会意识到自己忘了";
+}
+
+/** 图例行悬停的简介：一句话版（详情里的完整规则不动） */
+const SHORT_DESC = {
+  core: "钉住的秘密和承诺，永不外出",
+  ring1: "想起来还会心里一动的事",
+  ring2: "情绪很浓的事",
+  ring3: "还记得、值得留着的事",
+  ring4: "近几天的日常，慢慢变淡",
+  ring5: "开始糊了，能猜但说不清",
+  recall: "只剩零星的点，待满就忘",
+  vault: "原始存档，她够不着",
+};
+
+function renderLegend() {
+  const rows = $("legend-rows");
+  rows.innerHTML = "";
+  for (const r of scene.rings) {
+    const isVault = r.id === "vault";
+    const row = document.createElement("div");
+    row.className = "row";
+    const off = isVault ? !vaultOn : ringOff.has(r.id);
+    if (off) row.classList.add("off");
+    const ratioTxt = isVault
+      ? (vaultLoaded ? "幻影" : "可开")
+      : (r.days == null ? "永不过期" : r.days + " 天");
+    row.innerHTML =
+      `<span class="dot" style="background:${r.color}"></span>` +
+      `<span class="name">${esc(r.label)}</span>` +
+      `<span class="she ${r.sheSees ? "" : "no"}">${r.sheSees ? "她看得见" : "她看不见"}</span>` +
+      `<span class="meta">${r.count} · ${ratioTxt}</span>`;
+    row.title = SHORT_DESC[r.id] || r.desc || "";
+    row.addEventListener("click", () => {
+      lastInteract = performance.now();
+      if (isVault) {
+        if (!vaultLoaded) { vaultOn = true; refresh(true); return; }
+        vaultOn = !vaultOn;
+      } else {
+        ringOff.has(r.id) ? ringOff.delete(r.id) : ringOff.add(r.id);
+      }
+      renderLegend();
+      applyFilter();
+    });
+    rows.appendChild(row);
+  }
+}
+
+function applyFilter() {
+  visibleStars = scene.points.concat(scene.ghosts).filter(isStarVisible);
+}
+
+/* ── 投影 ────────────────────────────────────────────── */
+
+function project(x, y, z) {
+  const cy = Math.cos(cam.yaw), sy = Math.sin(cam.yaw);
+  const x1 = x * cy - z * sy;
+  const z1 = x * sy + z * cy;
+  const cp = Math.cos(cam.pitch), sp = Math.sin(cam.pitch);
+  const y2 = y * cp - z1 * sp;
+  const z2 = y * sp + z1 * cp;
+  const depth = z2 + cam.dist;
+  const scale = FOCAL / Math.max(depth, 60);
+  return { sx: W / 2 + x1 * scale, sy: H / 2 - y2 * scale, depth, scale };
+}
+
+/* ── 画 ──────────────────────────────────────────────── */
+
+function hexToRgb(hex) {
+  const n = parseInt(hex.slice(1), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+function easeOut(t) { return 1 - Math.pow(1 - t, 3); }
+
+function frame(t) {
+  requestAnimationFrame(frame);
+  if (!scene) return;
+  const dt = Math.min(64, t - (frame._t || t));
+  frame._t = t;
+
+  // 镜头滑行（点星后对准那颗星，拖一下就取消）
+  if (camTween) {
+    const k = Math.min(1, (t - camTween.t0) / camTween.dur);
+    const e = easeOut(k);
+    cam.yaw = camTween.fy + (camTween.yaw - camTween.fy) * e;
+    cam.pitch = camTween.fp + (camTween.pitch - camTween.fp) * e;
+    if (k >= 1) camTween = null;
+  } else {
+    // 惯性 + 自动旋转：没人动，3 秒后海自己接着转（看详情也不例外）
+    cam.yaw += vel.yaw * dt;
+    cam.pitch += vel.pitch * dt;
+    vel.yaw *= 0.9; vel.pitch *= 0.9;
+    if (Math.abs(vel.yaw) < 1e-5) vel.yaw = 0;
+    if (Math.abs(vel.pitch) < 1e-5) vel.pitch = 0;
+    if (spinOn && t - lastInteract > IDLE_SPIN_AFTER) cam.yaw += 0.00016 * dt;
+  }
+  if (cam.pitch > 1.45) cam.pitch = 1.45;
+  if (cam.pitch < -1.45) cam.pitch = -1.45;
+
+  ctx.clearRect(0, 0, W, H);
+
+  drawOrbits();
+  drawEdges();
+  drawStars();
+  drawHeart(t); // 心画在星星上面：它就是圆心本体，钉住的星藏在它后面（点心照样能选中那条记忆）
+
+  pickHover();
+}
+
+function drawOrbits() {
+  if (!orbitsOn) return; // 默认不画轨道：进海先看星星本身
+  const SEG = 96;
+  for (const r of scene.rings) {
+    if (r.id !== "vault" ? ringOff.has(r.id) : !vaultOn) continue;
+    ctx.beginPath();
+    for (let i = 0; i <= SEG; i++) {
+      const a = (i / SEG) * Math.PI * 2;
+      const p = project(Math.cos(a) * r.radius, 0, Math.sin(a) * r.radius);
+      if (i === 0) ctx.moveTo(p.sx, p.sy); else ctx.lineTo(p.sx, p.sy);
+    }
+    const rgb = hexToRgb(r.color);
+    // 她看得见的圈实线，她看不见的虚线 —— 图例收起来的时候，海自己也在讲这件事
+    const sheSees = r.sheSees === true;
+    ctx.setLineDash(sheSees ? [] : [4, 7]);
+    ctx.strokeStyle = `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${sheSees ? 0.13 : 0.07})`;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // 标签贴在轨道上，始终转到相机右侧，不挡星星
+    const la = cam.yaw + Math.PI / 2;
+    const lp = project(Math.cos(la) * r.radius, 0, Math.sin(la) * r.radius);
+    ctx.font = "11px -apple-system, 'Segoe UI', 'Microsoft YaHei', sans-serif";
+    ctx.fillStyle = `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${sheSees ? 0.55 : 0.4})`;
+    ctx.textAlign = "center";
+    ctx.fillText(`${r.short} ${r.count}`, lp.sx, lp.sy - 6);
+  }
+}
+
+function drawEdges() {
+  ctx.lineWidth = 1;
+  for (const e of scene.edges) {
+    const a = proj.get(e.a), b = proj.get(e.b);
+    if (!a || !b) continue;
+    const sa = byId.get(e.a), sb = byId.get(e.b);
+    if (!sa || !sb) continue;
+    // 亮度按两端里较暗的那颗 + 深度，远处的线几乎看不见
+    const base = Math.min(sa.alpha, sb.alpha) * 0.20 * (0.4 + 0.6 * e.score);
+    const depthFade =
+      Math.max(0, Math.min(1, (cam.dist + 500 - a.depth) / (cam.dist + 500))) *
+      Math.max(0, Math.min(1, (cam.dist + 500 - b.depth) / (cam.dist + 500)));
+    const alpha = base * (0.35 + 0.65 * depthFade);
+    if (alpha < 0.02) continue;
+    const c = hexToRgb(sa.alpha >= sb.alpha ? sa.color : sb.color);
+    ctx.strokeStyle = `rgba(${c[0]},${c[1]},${c[2]},${alpha.toFixed(3)})`;
+    ctx.beginPath();
+    ctx.moveTo(a.sx, a.sy);
+    ctx.lineTo(b.sx, b.sy);
+    ctx.stroke();
+  }
+}
+
+function drawHeart(t) {
+  // 圆心就是「环形的心」本体：一颗会呼吸的粉红心形
+  const p = project(0, 0, 0);
+  const pulse = 1 + 0.12 * Math.sin(t / 900);
+
+  // 心后面的粉红光晕，呼吸幅度跟心形同步
+  // 收在 ~34：圆心的星挂在 40~56，和心之间留一段可见的暗隙
+  const glowR = 34 * p.scale * pulse;
+  const g = ctx.createRadialGradient(p.sx, p.sy, 0, p.sx, p.sy, glowR);
+  g.addColorStop(0, "rgba(255,150,190,0.55)");
+  g.addColorStop(0.35, "rgba(255,127,168,0.16)");
+  g.addColorStop(1, "rgba(255,127,168,0)");
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.arc(p.sx, p.sy, glowR, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 心形本体：两段贝塞尔画标准心，尖端朝下
+  const s = Math.max(6, 15 * p.scale * pulse);
+  const cx = p.sx, cy = p.sy;
+  const hg = ctx.createLinearGradient(cx - s, cy - s, cx + s * 0.6, cy + s);
+  hg.addColorStop(0, "rgba(255,177,205,0.96)");
+  hg.addColorStop(1, "rgba(255,95,149,0.96)");
+  ctx.fillStyle = hg;
+  ctx.beginPath();
+  ctx.moveTo(cx, cy + s * 0.95);
+  ctx.bezierCurveTo(cx - s * 1.15, cy + s * 0.15, cx - s * 0.85, cy - s * 0.95, cx, cy - s * 0.30);
+  ctx.bezierCurveTo(cx + s * 0.85, cy - s * 0.95, cx + s * 1.15, cy + s * 0.15, cx, cy + s * 0.95);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = "rgba(255,255,255,0.30)";
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  // 左上瓣上一点高光，像有光打在上面
+  ctx.fillStyle = "rgba(255,255,255,0.45)";
+  ctx.beginPath();
+  ctx.arc(cx - s * 0.42, cy - s * 0.34, Math.max(0.8, s * 0.16), 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawStars() {
+  // 先投影并按深度排：远的先画，近的压在上面
+  const list = [];
+  for (const st of visibleStars) {
+    let p = project(st.x, st.y, st.z);
+    // 圆心的星永远画在心外：投影快贴到心时，沿半径滑到心缘外一圈——绕过去，不被心吞掉也不探出半个身子
+    if (st.ring === 'core') {
+      const minPx = 15 * (FOCAL / Math.max(cam.dist, 60)) * 1.12 + 20;
+      let dx = p.sx - W / 2, dy = p.sy - H / 2;
+      let d = Math.hypot(dx, dy);
+      if (d < 0.5) { dx = 0; dy = -1; d = 1; }
+      if (d < minPx) p = { ...p, sx: W / 2 + (dx / d) * minPx, sy: H / 2 + (dy / d) * minPx };
+    }
+    proj.set(st.id, p);
+    list.push({ st, p });
+  }
+  list.sort((a, b) => b.p.depth - a.p.depth);
+
+  const q = query.trim().toLowerCase();
+
+  for (const { st, p } of list) {
+    const r = Math.max(0.8, st.size * p.scale);
+    let alpha = st.alpha;
+    let halo = false;
+    if (st.id === selectedId) { alpha = Math.max(alpha, 0.95); halo = true; }
+    if (q && (st.content.toLowerCase().includes(q) || st.hooks.some((h) => h.text.toLowerCase().includes(q)))) halo = true;
+    if (st.id === hoverId) { alpha = Math.max(alpha, 0.9); }
+
+    const rgb = hexToRgb(st.color);
+
+    if (halo) {
+      ctx.strokeStyle = `rgba(255,255,255,${(0.35 * alpha).toFixed(3)})`;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(p.sx, p.sy, r + 4, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    // 光晕 + 星体
+    const glowR = r * 3.4;
+    if (glowR > 2) {
+      const g = ctx.createRadialGradient(p.sx, p.sy, 0, p.sx, p.sy, glowR);
+      g.addColorStop(0, `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${(alpha * 0.30).toFixed(3)})`);
+      g.addColorStop(1, `rgba(${rgb[0]},${rgb[1]},${rgb[2]},0)`);
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(p.sx, p.sy, glowR, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${alpha.toFixed(3)})`;
+    ctx.beginPath();
+    ctx.arc(p.sx, p.sy, r, 0, Math.PI * 2);
+    ctx.fill();
+
+    if (st.pinned) {
+      ctx.strokeStyle = `rgba(255,212,121,${(0.75 * alpha).toFixed(3)})`;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(p.sx, p.sy, r + 3, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+
+  drawSelectionMarker();
+}
+
+/** 选中的星：一圈会呼吸的白色标记。圆心的心形永远在屏幕正中，选中的星又总被滑到那里 —— 没这个环会被光晕吞掉 */
+function drawSelectionMarker() {
+  if (!selectedId) return;
+  const p = proj.get(selectedId);
+  if (!p) return;
+  const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 420);
+  ctx.strokeStyle = `rgba(255,255,255,${(0.5 + 0.35 * pulse).toFixed(3)})`;
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  ctx.arc(p.sx, p.sy, 9 + 2.5 * pulse, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.strokeStyle = `rgba(255,255,255,${(0.22 + 0.16 * pulse).toFixed(3)})`;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.arc(p.sx, p.sy, 15 + 3 * pulse, 0, Math.PI * 2);
+  ctx.stroke();
+}
+
+/* ── 拾取 / 悬停 ─────────────────────────────────────── */
+
+function nearestStar(mx, my, maxDist) {
+  // proj 里是本帧所有可见星；挑屏幕距离最近的一颗
+  let best = null, bestD = maxDist;
+  for (const st of visibleStars) {
+    const p = proj.get(st.id);
+    if (!p) continue;
+    const d = Math.hypot(p.sx - mx, p.sy - my);
+    if (d < bestD) { bestD = d; best = st; }
+  }
+  return best;
+}
+
+function pickHover() {
+  if (dragging) return;
+  const st = nearestStar(mouse.x, mouse.y, 14);
+  if ((st && st.id) !== hoverId) {
+    hoverId = st ? st.id : null;
+    canvas.style.cursor = st ? "pointer" : dragging ? "grabbing" : "grab";
+    if (!st) { tip.style.display = "none"; return; }
+    const ring = ringMeta(st.ring);
+    tip.innerHTML =
+      `<div class="t-ring" style="color:${st.color}">${esc(ring ? ring.label : st.ring)}${st.pinned ? " · 钉住" : ""}</div>` +
+      `<div class="t-text">${esc(st.content)}</div>` +
+      (st.ring !== "vault"
+        ? `<div class="t-sub">${st.nAlive}/${st.nTotal} 个点还记得 · ${ago(st.createdAt)}</div>`
+        : `<div class="t-sub">总库幻影 · 她够不着</div>`);
+    tip.style.display = "block";
+    const tw = tip.offsetWidth, th = tip.offsetHeight;
+    tip.style.left = Math.min(W - tw - 10, mouse.x + 16) + "px";
+    tip.style.top = Math.min(H - th - 10, mouse.y - th - 8) + "px";
+  }
+}
+
+/* ── 镜头滑行：点星后把那颗星转到正中间 ─────────────── */
+
+function glideTo(st) {
+  const ty = Math.atan2(st.x, st.z);
+  const tp = Math.max(-1.35, Math.min(1.35, Math.atan2(st.y, Math.hypot(st.x, st.z))));
+  let dy = ty - cam.yaw;
+  dy = ((dy + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI; // 走最短的那条弧
+  camTween = { yaw: cam.yaw + dy, pitch: tp, fy: cam.yaw, fp: cam.pitch, t0: performance.now(), dur: 750 };
+  vel.yaw = vel.pitch = 0;
+}
+
+/* ── 详情面板 ────────────────────────────────────────── */
+
+function openDetail(st) {
+  selectedId = st.id;
+  toggleDrawer(false);
+  toggleSearch(false);
+  const ring = ringMeta(st.ring);
+  const srcTxt = st.source === "group" ? "群聊" : st.source === "private" ? "私聊" : "—";
+  const spkTxt = st.speaker === "self" ? "她说的" : st.speaker === "user" ? "你说的" : "—";
+
+  let html =
+    `<button class="close" type="button" title="关掉">✕</button>` +
+    `<div class="ringline">` +
+      `<span class="dot" style="background:${st.color}"></span>` +
+      `<span class="rl">${esc(ring ? ring.label : st.ring)}</span>` +
+      `<span class="she ${ring && ring.sheSees ? "" : "no"}">${ring && ring.sheSees ? "她看得见" : "她看不见"}</span>` +
+      (st.pinned ? `<span class="pin">钉住</span>` : "") +
+    `</div>` +
+    `<div class="content">${esc(st.content) || "<span style='color:var(--faint)'>(没有原文)</span>"}</div>` +
+    `<table>` +
+      `<tr><td class="k">记于</td><td class="v">${fmtDay(st.createdAt)} · ${ago(st.createdAt)}</td></tr>` +
+      (st.ring !== "vault"
+        ? `<tr><td class="k">这圈规则</td><td class="v">${esc(ring ? ring.desc : "")}</td></tr>` +
+          `<tr><td class="k">来源</td><td class="v">${srcTxt} · ${spkTxt}</td></tr>` +
+          `<tr><td class="k">想起过</td><td class="v">${st.hits} 次</td></tr>` +
+          (st.emotion > 0 ? `<tr><td class="k">情绪强度</td><td class="v">${st.emotion} / 10</td></tr>` : "")
+        : `<tr><td class="k">来源</td><td class="v">${srcTxt} · ${spkTxt}</td></tr>`) +
+    `</table>`;
+
+  if (st.ring !== "vault") {
+    const n = st.nTotal;
+    if (st.hooks.length) {
+      html += `<div class="sec">还记得的细节 ${st.hooks.length}/${n}</div>`;
+      for (const h of st.hooks) {
+        const share = h.weight == null ? null : shareOf(h.ord, n);
+        html +=
+          `<div class="hook">` +
+            `<span class="ord">${h.ord + 1}.</span>` +
+            `<span class="txt" title="${esc(h.text)}">${esc(h.text)}</span>` +
+            (share != null
+              ? `<span class="bar"><i style="width:${Math.round(share * 100)}%;background:${st.color}"></i></span>`
+              : `<span class="bar"><i style="width:0"></i></span>`) +
+            (h.buffered ? `<span class="tag">缓冲圈</span>` : "") +
+          `</div>`;
+      }
+      const noW = st.hooks.some((h) => h.weight == null);
+      if (noW) html += `<div class="flavor">没排进钩子的点没有权重条 —— 她拆点的时候没把它当「钩子」，只是顺带记下。</div>`;
+    }
+    if (st.lost.length) {
+      html += `<div class="sec">已经掉掉的细节 ${st.lost.length} 个</div>`;
+      for (const l of st.lost) {
+        html +=
+          `<div class="lost-wrap">` +
+            `<span class="ord" style="color:var(--faint);font-size:12px;width:18px;flex:none">${l.ord + 1}.</span>` +
+            `<span class="lost" style="flex:1">${esc(l.text)}</span>` +
+            (l.buffered ? `<span class="tag">提醒一下还能捞回来</span>` : `<span class="tag">真忘掉了</span>`) +
+          `</div>`;
+      }
+    }
+    if (st.nAlive === 0 && st.nTotal > 0) {
+      html += `<div class="flavor">一个点都不剩了 —— 只记得有这回事，想不起任何内容。${scene.metaMemory ? "元记忆开着，她自己知道这个缺口。" : ""}</div>`;
+    }
+  } else {
+    html += `<div class="flavor">总库是原始存档，她永远够不着。在海里它只是一层几乎看不见的雾。</div>`;
+  }
+
+  detailEl.innerHTML = html;
+  detailEl.classList.add("on");
+  detailEl.querySelector(".close").addEventListener("click", closeDetail);
+}
+
+function closeDetail() {
+  selectedId = null;
+  detailEl.classList.remove("on");
+}
+
+/* ── 搜索 ────────────────────────────────────────────── */
+
+const qInput = $("q");
+const qHits = $("q-hits");
+
+qInput.addEventListener("input", () => {
+  query = qInput.value;
+  lastInteract = performance.now();
+  const q = query.trim().toLowerCase();
+  if (!q) { qHits.classList.remove("on"); return; }
+  const hits = scene.points
+    .filter((s) => s.content.toLowerCase().includes(q) || s.hooks.some((h) => h.text.toLowerCase().includes(q)))
+    .slice(0, 8);
+  qHits.innerHTML = hits.length
+    ? hits.map((s) => `<div data-id="${esc(s.id)}" title="${esc(s.content)}">${esc(s.content.slice(0, 40))}</div>`).join("")
+    : `<div class="nomatch">没有哪条记忆里有这几个字</div>`;
+  qHits.classList.add("on");
+  qHits.querySelectorAll("div[data-id]").forEach((el) => {
+    el.addEventListener("click", () => {
+      const st = byId.get(el.dataset.id);
+      if (!st) return;
+      if (!isStarVisible(st)) { // 命中的记忆在被藏掉的圈里：把那圈亮回来
+        ringOff.delete(st.ring);
+        renderLegend();
+        applyFilter();
+      }
+      qHits.classList.remove("on");
+      openDetail(st);
+      glideTo(st);
+      lastInteract = performance.now();
+    });
+  });
+});
+qInput.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") { toggleSearch(false); }
+  if (e.key === "Enter") {
+    const first = qHits.querySelector("div[data-id]");
+    if (first) first.click();
+  }
+});
+document.addEventListener("pointerdown", (e) => {
+  if (searchOpen() && !searchPop.contains(e.target) && e.target !== $("btn-search")) toggleSearch(false);
+});
+
+/* ── 交互：拖 / 缩 / 点 ──────────────────────────────── */
+
+let dragging = false;
+let mouse = { x: -1, y: -1 };
+let down = null;
+let suppressClick = false; // 拖完松手的那一下不是点选
+const pointers = new Map();
+let pinchD0 = 0, dist0 = 0;
+
+canvas.addEventListener("pointerdown", (e) => {
+  try { canvas.setPointerCapture(e.pointerId); } catch { /* 合成指针可能拿不到 capture，不影响画 */ }
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (pointers.size === 1) {
+    dragging = true;
+    canvas.classList.add("dragging");
+    down = { x: e.clientX, y: e.clientY, moved: false };
+    vel.yaw = vel.pitch = 0;
+    camTween = null; // 手一上来，滑行让位
+    suppressClick = false;
+  } else if (pointers.size === 2) {
+    const ps = [...pointers.values()];
+    pinchD0 = Math.hypot(ps[0].x - ps[1].x, ps[0].y - ps[1].y);
+    dist0 = cam.dist;
+  }
+  lastInteract = performance.now();
+});
+
+canvas.addEventListener("pointermove", (e) => {
+  mouse.x = e.clientX; mouse.y = e.clientY;
+  if (!pointers.has(e.pointerId)) return;
+  const prev = pointers.get(e.pointerId);
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  lastInteract = performance.now();
+
+  if (pointers.size === 2) {
+    const ps = [...pointers.values()];
+    const d = Math.hypot(ps[0].x - ps[1].x, ps[0].y - ps[1].y);
+    if (pinchD0 > 0) cam.dist = clampDist(dist0 * (pinchD0 / Math.max(d, 1)));
+    return;
+  }
+  if (!dragging) return;
+
+  const dx = e.clientX - prev.x, dy = e.clientY - prev.y;
+  cam.yaw += dx * 0.005;
+  cam.pitch += dy * 0.005;
+  if (cam.pitch > 1.45) cam.pitch = 1.45;
+  if (cam.pitch < -1.45) cam.pitch = -1.45;
+  vel.yaw = dx * 0.005 * 0.6;
+  vel.pitch = dy * 0.005 * 0.6;
+  if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) > 6) down.moved = true;
+});
+
+function clampDist(d) { return Math.max(DIST_MIN, Math.min(DIST_MAX, d)); }
+
+canvas.addEventListener("pointerup", (e) => {
+  pointers.delete(e.pointerId);
+  if (pointers.size === 0) {
+    dragging = false;
+    canvas.classList.remove("dragging");
+    if (down && down.moved) suppressClick = true; // 拖拽结束的那一下，别当成点选
+    down = null;
+  }
+  lastInteract = performance.now();
+});
+
+canvas.addEventListener("pointercancel", (e) => {
+  pointers.delete(e.pointerId);
+  if (pointers.size === 0) { dragging = false; canvas.classList.remove("dragging"); }
+});
+
+// 点选用原生 click：按下抬起都在画布上就算，不依赖 pointer capture 靠不靠谱
+canvas.addEventListener("click", (e) => {
+  if (suppressClick) { suppressClick = false; return; }
+  const st = nearestStar(e.clientX, e.clientY, 18);
+  if (st && st.ring !== "vault") {
+    openDetail(st);
+    glideTo(st);
+  } else if (st && st.ring === "vault") {
+    hoverId = st.id; /* 幻影点开只给 tooltip，不给详情 */
+  } else closeDetail();
+});
+
+canvas.addEventListener("wheel", (e) => {
+  e.preventDefault();
+  cam.dist = clampDist(cam.dist * (e.deltaY > 0 ? 1.09 : 0.917));
+  lastInteract = performance.now();
+}, { passive: false });
+
+canvas.addEventListener("dblclick", () => { cam.yaw = 0.55; cam.pitch = 0.4; cam.dist = 940; camTween = null; });
+
+/* ── 顶部小圆钮 ──────────────────────────────────────── */
+
+$("btn-layers").addEventListener("click", () => { toggleDrawer(); lastInteract = performance.now(); });
+$("btn-search").addEventListener("click", () => { toggleSearch(); lastInteract = performance.now(); });
+
+$("spin").addEventListener("click", () => {
+  spinOn = !spinOn;
+  const b = $("spin");
+  b.classList.toggle("on", spinOn);
+  b.classList.toggle("stopped", !spinOn); // 停下时图标换成暂停双杠，按钮始终正圆
+  b.title = spinOn ? "海在转，点一下停" : "海停着，点一下转";
+  lastInteract = performance.now();
+});
+
+$("orbit-toggle").addEventListener("click", () => {
+  orbitsOn = !orbitsOn;
+  $("orbit-toggle").textContent = orbitsOn ? "轨道线和圈名：显示" : "轨道线和圈名：隐藏";
+  lastInteract = performance.now();
+});
+
+$("st-refresh").addEventListener("click", () => {
+  loadingEl.classList.remove("off");
+  refresh(vaultLoaded && vaultOn);
+  lastInteract = performance.now();
+});
+
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") closeOverlays();
+});
+
+/* ── 底部提示：6 秒没人动就退场，动手再回来 ─────────── */
+
+let hintTimer = null;
+function wakeHint() {
+  hintEl.classList.remove("faded");
+  clearTimeout(hintTimer);
+  hintTimer = setTimeout(() => hintEl.classList.add("faded"), 6000);
+}
+document.addEventListener("pointerdown", wakeHint);
+document.addEventListener("keydown", wakeHint);
+wakeHint();
+
+/* ── 起来 ────────────────────────────────────────────── */
+
+function resize() {
+  DPR = Math.min(2, window.devicePixelRatio || 1);
+  W = window.innerWidth;
+  H = window.innerHeight;
+  canvas.width = Math.round(W * DPR);
+  canvas.height = Math.round(H * DPR);
+  canvas.style.width = W + "px";
+  canvas.style.height = H + "px";
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+window.addEventListener("resize", resize);
+resize();
+
+requestAnimationFrame(frame);
+refresh(false);
+</script>
+</body>
+</html>

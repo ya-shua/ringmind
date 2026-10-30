@@ -133,6 +133,10 @@ function toolRecall({ cues, limit = 5 }) {
   got.forEach((r, i) => {
     const extra = r.recovered > 0 ? `（被这么一提，又多想起来 ${r.recovered} 个细节）` : ''
     lines.push('')
+    // 故意不给她时间戳。
+    // 精确到秒的"2026-10-28 13:19:01"不是回忆，是查数据库；
+    // 而模糊化的"上个月"又要按圈调精度，等于替她撒谎。
+    // 干脆不给 —— 她只记得内容和位置，时间感交给她自己从上下文里体会。
     lines.push(`${i + 1}. [${ringLabel(r.ring)}] ${r.content}`)
     if (r.points?.length) lines.push(`   记得的细节：${r.points.join('、')}${extra}`)
     else lines.push(`   只记得有这回事，细节想不起来了${extra}`)
@@ -165,12 +169,10 @@ function toolOverview() {
   return lines.join('\n')
 }
 
-function toolForget({ id }) {
-  const n = Number(id)
-  if (!Number.isFinite(n)) throw new Error('id 要是数字（先 overview / recall 拿 id）')
-  db.forget(n)
-  return `忘了 #${n}。`
-}
+// 没有 toolForget —— 她这边不提供删除。
+// 分工铁律：她决定记什么，记忆库决定什么时候淡、什么时候掉。
+// 「她不能直接删数据」写死在 docs/交接.md 第 92 行。
+// 底层 Ringmind.forget() 还在（面板维护、误写入清理要用），只是不暴露给她。
 
 /* ───────────────────────── 工具清单 ─────────────────────────
  * 描述就是她的"认知边界"：这里不出现 ring5 / recall，她想不起来用。
@@ -250,16 +252,10 @@ const TOOLS = [
     description: '看看自己现在记着些什么：各位置各有几条、最近记下的几件事。想知道"我还记得她/他什么"时用。',
     inputSchema: { type: 'object', properties: {}, additionalProperties: false },
   },
-  {
-    name: 'ring_forget',
-    description: '主动忘掉一条记忆（想不起来是哪条就先 ring_overview 或 ring_recall 拿 id）。用之前想清楚 —— 忘了就真没了。',
-    inputSchema: {
-      type: 'object',
-      properties: { id: { type: 'number', description: '记忆 id' } },
-      required: ['id'],
-      additionalProperties: false,
-    },
-  },
+  // ⚠️ 故意不提供「删除」和「修改」。
+  //    分工铁律（docs/交接.md 第 87 行）：她决定记什么，记忆库决定什么时候淡、什么时候掉。
+  //    「她不能直接删数据，库不能替她判断意义」—— 这条不能混。
+  //    记错了走 note 批注（更正 / 存疑），原文永远留着。
 ]
 
 const HANDLERS = {
@@ -267,7 +263,6 @@ const HANDLERS = {
   ring_recall: toolRecall,
   ring_search: toolSearch,
   ring_overview: toolOverview,
-  ring_forget: toolForget,
 }
 
 /* ───────────────────────── JSON-RPC over stdio ───────────────────────── */

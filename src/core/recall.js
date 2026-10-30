@@ -29,6 +29,11 @@ export function recall(store, config, cues, { limit = 5, now = Date.now() } = {}
 
   if (cueList.length === 0) return [];
 
+  // 元记忆：她知不知道自己忘了。
+  // 永不忘模式一个点都不会少，给「缺口」没有意义 —— 所以强制不生效，
+  // 哪怕配置里 metaMemory 是开着的。
+  const metaOn = !!config.metaMemory && config.mode !== "never-forget";
+
   // ① 找候选：钩子匹配 + 内容匹配
   const candidates = new Map();
   for (const cue of cueList) {
@@ -96,7 +101,7 @@ export function recall(store, config, cues, { limit = 5, now = Date.now() } = {}
       return wa - wb;
     });
 
-    results.push({
+    const item = {
       id: mem.id,
       content: mem.content,
       ring: mem.ring,
@@ -106,7 +111,20 @@ export function recall(store, config, cues, { limit = 5, now = Date.now() } = {}
       hitWeight: Number(hitWeight.toFixed(3)),
       ceiling,
       ratio: Number(ratio.toFixed(3)),
-    });
+    };
+
+    // 元记忆：告诉她「这条原本有几个点、这次想起几个、还剩几个没想起来」。
+    // 有了这个她才说得出「我总觉得有件事想不起来了」——
+    // 没有它，她只知道想起了什么，不知道还缺什么。
+    if (metaOn) {
+      item.gap = {
+        total: pts.length,
+        shown: shown.length,
+        missing: Math.max(0, pts.length - shown.length),
+      };
+    }
+
+    results.push(item);
   }
 
   // ⑤ 命中最多的排前面

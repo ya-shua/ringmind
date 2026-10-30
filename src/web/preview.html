@@ -320,12 +320,10 @@
     border-top: 1px solid rgba(255,255,255,.07);
   }
 
-  /* 记忆更新：三张并排、等高 */
+  /* 记忆更新：两张并排、等高 */
   #page-task.active > .card { align-self: stretch; }
-  #page-task.active { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  @media (max-width: 1180px) {
-    #page-task.active { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  }
+  #page-task.active { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
   @media (max-width: 780px) {
     #page-task.active { grid-template-columns: minmax(0, 1fr); }
   }
@@ -450,6 +448,111 @@
   }
   .mini-edit:hover { background: rgba(143,179,255,.16); color: #dce6ff; border-color: rgba(143,179,255,.4); }
 
+  /* ── 快速入口：网址 / 账户 / 密码，三样特别醒目 ────────── */
+  .quick-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 13px;
+    margin-top: 4px;
+    align-items: stretch;
+  }
+  @media (max-width: 1100px) { .quick-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 760px)  { .quick-grid { grid-template-columns: minmax(0, 1fr); } }
+
+  /* 空着的那一块 */
+  .qe-blank {
+    border: 1px dashed rgba(255,255,255,.10);
+    border-radius: 13px;
+    display: flex; align-items: center; justify-content: center;
+    min-height: 120px;
+    color: rgba(238,242,248,.16);
+    font-size: 12px; letter-spacing: .12em;
+  }
+
+  /* 卡片底部的「打开」按钮 */
+  .qe-foot { margin-top: 11px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,.05); }
+  .qe-open {
+    width: 100%;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    padding: 8px 12px; border-radius: 9px;
+    font-size: 12.5px; font-weight: 600; letter-spacing: .02em;
+    color: #cfe0ff;
+    background: rgba(127,176,255,.10);
+    border: 1px solid rgba(127,176,255,.22);
+    cursor: pointer;
+    transition: background .16s, border-color .16s, color .16s, box-shadow .16s;
+  }
+  .qe-open:hover {
+    background: rgba(127,176,255,.20);
+    border-color: rgba(127,176,255,.45);
+    color: #fff;
+    box-shadow: 0 0 14px rgba(127,176,255,.18);
+  }
+
+  .qe {
+    border: 1px solid var(--border);
+    border-radius: 13px;
+    background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.022));
+    padding: 15px 17px 13px;
+    transition: border-color .18s, box-shadow .18s;
+  }
+  .qe:hover { border-color: rgba(127,176,255,.30); box-shadow: 0 0 0 1px rgba(127,176,255,.10); }
+
+  .qe-top { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 3px; }
+  .qe-ico {
+    width: 30px; height: 30px; flex: none;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 9px; font-size: 15px;
+    background: rgba(127,176,255,.12);
+    border: 1px solid rgba(127,176,255,.20);
+  }
+  .qe-head { flex: 1; min-width: 0; }
+  .qe-title { font-size: 14px; font-weight: 650; color: var(--text); letter-spacing: .01em; }
+  .qe-sub { font-size: 11.5px; color: var(--faint); margin-top: 2px; }
+  .qe-tag {
+    flex: none; font-size: 10.5px; letter-spacing: .04em;
+    padding: 2px 7px; border-radius: 5px; margin-top: 2px;
+    color: rgba(190,205,230,.75);
+    background: rgba(255,255,255,.06);
+    border: 1px solid rgba(255,255,255,.09);
+  }
+
+  .qe-rows { margin-top: 12px; display: flex; flex-direction: column; gap: 1px; }
+  .qe-row {
+    display: flex; align-items: baseline; gap: 11px;
+    padding: 7px 0;
+    border-top: 1px solid rgba(255,255,255,.045);
+  }
+  .qe-row:first-child { border-top: none; }
+  .qe-k {
+    flex: none; width: 40px;
+    font-size: 11.5px; color: var(--faint); letter-spacing: .02em;
+  }
+  .qe-v {
+    flex: 1; min-width: 0;
+    font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+    font-size: 16.5px; font-weight: 600; letter-spacing: .015em;
+    line-height: 1.35;
+    color: var(--text);
+    word-break: break-all;
+    cursor: pointer;
+    transition: color .15s, text-shadow .15s;
+  }
+  .qe-v:hover { color: #fff; text-shadow: 0 0 12px rgba(127,176,255,.45); }
+  .qe-v.url  { color: var(--accent); font-size: 15.5px; }
+  .qe-v.user { color: #e8eeff; }
+  .qe-v.pass {
+    color: var(--warn);
+    font-size: 16px;
+    text-shadow: 0 0 14px rgba(255,192,107,.18);
+  }
+  .qe-v.pass:hover { color: #ffd79a; text-shadow: 0 0 16px rgba(255,192,107,.5); }
+  .qe-v.empty { color: var(--faint); font-weight: 400; font-size: 14px; }
+  .qe-copied { color: var(--ok) !important; text-shadow: 0 0 12px rgba(110,231,160,.4) !important; }
+
+  /* 密码那行的小「改」按钮，跟行基线对齐 */
+  .qe-row .mini-edit { margin-left: 2px; align-self: center; }
+
   /* 下拉里的选项：默认太灰，深色底下看不清 */
   select option, select optgroup { background: #12161f; color: rgba(232,238,250,.92); }
   select optgroup { color: rgba(190,202,224,.62); font-style: normal; }
@@ -457,7 +560,13 @@
 
   /* 容量横排 */
   .ring-cap-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(116px,1fr)); gap:10px; }
-  .cap-cell { background:rgba(255,255,255,.035); border:1px solid rgba(255,255,255,.07); border-radius:11px; padding:11px 13px; }
+  /* 每个格子的框和进度条带所属圈的颜色（--ring-rgb 由填充 JS 写进 style）*/
+  .cap-cell {
+    background: linear-gradient(168deg, rgba(var(--ring-rgb, 255,255,255), .08), rgba(255,255,255,.02));
+    border: 1px solid rgba(var(--ring-rgb, 255,255,255), .26);
+    border-radius: 11px; padding: 11px 13px;
+  }
+  .cap-cell .cap-bar i { background: rgb(var(--ring-rgb, 143,179,255)); }
   .cap-cell.full { border-color:rgba(224,85,85,.45); background:rgba(224,85,85,.07); }
   .cap-name { font-size:12px; color:var(--dim); }
   .cap-num { margin-top:5px; font-variant-numeric:tabular-nums; }
@@ -467,6 +576,25 @@
   .cap-bar i { display:block; height:100%; background:var(--c-core,#8fb3ff); border-radius:2px; }
   .cap-cell.full .cap-bar i { background:var(--danger,#e05555); }
   .cap-when { margin-top:7px; font-size:11px; color:var(--faint); }
+
+  /* ── 记忆浏览页 ───────────────────────────── */
+  #browse-metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+  @media (max-width: 1080px) { #browse-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 620px)  { #browse-metrics { grid-template-columns: 1fr; } }
+  #browse-metrics .stat { padding: 18px 20px 16px; }
+  #browse-metrics .stat-main { font-size: 24px; font-variant-numeric: tabular-nums; letter-spacing: -.4px; line-height: 1.15; }
+  #browse-metrics .stat:first-child .stat-main { color: #ffd479; }
+
+  .browse-toolbar { display: flex; gap: 9px; flex-wrap: wrap; align-items: center; margin-bottom: 14px; }
+  .browse-toolbar input[type="text"] { flex: 1; min-width: 220px; }
+  .browse-toolbar select { width: 130px; }
+  .browse-count { font-size: 11.5px; color: var(--faint); margin-left: auto; font-variant-numeric: tabular-nums; }
+
+  .browse-scroll { max-height: 520px; overflow-y: auto; border: 1px solid rgba(255,255,255,.06); border-radius: 10px; }
+  .browse-scroll table { margin: 0; }
+  .browse-scroll th { position: sticky; top: 0; z-index: 2; background: rgba(10,13,21,.94); }
+  .browse-scroll td { border-bottom: 1px solid rgba(255,255,255,.045); }
+  .browse-scroll tr:last-child td { border-bottom: none; }
 
   /* 记忆圈页：每行卡片等高 */
   #page-rings.active { align-items: stretch; }
@@ -557,44 +685,7 @@
     line-height: 1.6;
   }
 
-  /* ── 概览 ───────────────────────────────── */
-  .overview {
-    display: grid;
-    grid-template-columns: minmax(260px, 380px) 1fr;
-    gap: 26px;
-    align-items: center;
-  }
-
-  .ring-svg { width: 100%; height: auto; display: block; }
-  .ring-svg circle { cursor: pointer; transition: opacity .15s; }
-  .ring-svg circle:hover { opacity: .8; }
-  .ring-svg text { font-size: 8.5px; font-family: inherit; pointer-events: none; }
-
-  .legend { display: flex; flex-direction: column; gap: 6px; }
-
-  .legend-row {
-    display: flex;
-    align-items: center;
-    gap: 11px;
-    padding: 9px 12px;
-    border-radius: 10px;
-    background: rgba(255,255,255,.028);
-    font-size: 12.5px;
-    transition: background .14s;
-  }
-
-  .legend-row:hover { background: var(--glass-hover); }
-
-  .swatch { width: 9px; height: 9px; border-radius: 3px; flex: none; }
-  .legend-row .name { flex: 1; color: var(--dim); }
-  .legend-row .num {
-    color: var(--text);
-    font-variant-numeric: tabular-nums;
-    font-size: 12px;
-  }
-
-  /* ── 字段行 ─────────────────────────────── */
-  .field {
+  /* ── 各圈容量（横排格子，颜色由 JS 按圈写入）── */  .field {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(180px, 230px);
     gap: 18px;
@@ -884,7 +975,7 @@
   #page-token table th.num, #page-token table td.num { width: 1%; }
   #page-token table th:first-child, #page-token table td:first-child { width: auto; min-width: 140px; }
 
-  /* 概览那两张表：给宽一点，别让长数字挤成两行 */
+  /* 记忆浏览那几张带表的卡：给宽一点，别让长数字挤成两行 */
   .page.active > .card.roomy {
     min-width: min(520px, 100%);
     align-self: stretch; /* 并排两张等高，不然一高一矮很难看 */
@@ -1272,6 +1363,23 @@
 
   .btn-row { display: flex; gap: 9px; flex-wrap: wrap; }
 
+  /* 小号按钮，用在卡片标题右边 */
+  .btn.btn-sm {
+    height: 26px;
+    padding: 0 10px;
+    font-size: 12px;
+    border-radius: 7px;
+    margin-left: auto;   /* 推到标题行最右 */
+    flex: none;
+  }
+
+  /* 锁住的设置区：能看不能拖 */
+  .locked .slider-row {
+    pointer-events: none;
+    opacity: .45;
+    filter: grayscale(.4);
+  }
+
   /* ── 右下角保存 ─────────────────────────── */
   .savebar {
     position: fixed;
@@ -1317,7 +1425,6 @@
     .nav-item.active::before { display: none; }
     main { padding: 20px 16px 110px; }
     .page.active { grid-template-columns: 1fr; }
-    .overview { grid-template-columns: 1fr; }
     .field { grid-template-columns: 1fr; gap: 7px; }
     .savebar { right: 12px; bottom: 12px; }
     .savebar .status { display: none; }
@@ -1360,8 +1467,8 @@
 <div class="shell">
   <aside>
     <div class="nav-group-label">主页</div>
-    <div class="nav-item active" data-page="overview"><span class="ico">◎</span>概览</div>
-    <div class="nav-item" data-page="browse"><span class="ico">☰</span>记忆浏览</div>
+    <div class="nav-item" id="nav-sea" title="整座库画成一片三维星海，在新页打开"><span class="ico">✧</span>记忆海</div>
+    <div class="nav-item active" data-page="browse" title="看看实际记得什么，忘了什么"><span class="ico">☰</span>记忆浏览</div>
     <div class="nav-item" data-page="health"><span class="ico">◉</span>连接状态</div>
 
     <div class="nav-group-label" style="margin-top:16px">记忆设置</div>
@@ -1374,75 +1481,20 @@
     <div class="nav-item" data-page="db"><span class="ico">⛁</span>数据库</div>
     <div class="nav-item" data-page="token"><span class="ico">¥</span>Token 消耗</div>
   </aside>
+  <script>
+    // 记忆海是独立页面（sea.html），不参与本面板的切页。
+    // 这个监听注册在下面主脚本之前，拦下点击不让切页逻辑把它当成一个 page。
+    (function () {
+      var el = document.getElementById("nav-sea");
+      if (!el) return;
+      el.addEventListener("click", function (ev) {
+        ev.stopImmediatePropagation();
+        window.open("sea.html", "_blank");
+      });
+    })();
+  </script>
 
   <main>
-
-    <!-- ══════ 概览 ══════ -->
-    <section class="page active" id="page-overview">
-      <div class="page-head">
-        <h1>概览</h1>
-        <p>记得什么、忘了什么，一眼看到。</p>
-      </div>
-
-      <div class="banner info wide" id="demo-banner">
-        <span class="bico">ℹ</span>
-        <span id="demo-text">正在读记忆库…</span>
-      </div>
-
-      <div class="card wide">
-        <div class="overview">
-          <svg class="ring-svg" viewBox="0 0 320 320">
-            <circle cx="160" cy="160" r="152" fill="none" stroke="rgba(255,255,255,.10)" stroke-width="1" stroke-dasharray="3 5"/>
-            <circle cx="160" cy="160" r="140" fill="var(--c-recall)" opacity=".55" data-ring="recall"/>
-            <circle cx="160" cy="160" r="116" fill="var(--c-r5)" opacity=".68" data-ring="ring5"/>
-            <circle cx="160" cy="160" r="92"  fill="var(--c-r4)" opacity=".76" data-ring="ring4"/>
-            <circle cx="160" cy="160" r="68"  fill="var(--c-r3)" opacity=".84" data-ring="ring3"/>
-            <circle cx="160" cy="160" r="50"  fill="var(--c-r2)" opacity=".90" data-ring="ring2"/>
-            <circle cx="160" cy="160" r="34"  fill="var(--c-r1)" opacity=".95" data-ring="ring1"/>
-            <circle cx="160" cy="160" r="18"  fill="var(--c-core)" data-ring="core"/>
-            <text x="160" y="163" text-anchor="middle" style="fill:#3a2b00;font-weight:700;font-size:8.5px">圆心</text>
-            <text x="160" y="143" text-anchor="middle" style="fill:#3a1200">一圈</text>
-            <text x="160" y="120" text-anchor="middle" style="fill:#4a0020">二圈</text>
-            <text x="160" y="101" text-anchor="middle" style="fill:#1a0040">三圈</text>
-            <text x="160" y="77"  text-anchor="middle" style="fill:#001a44">闲聊</text>
-            <text x="160" y="53"  text-anchor="middle" style="fill:#e3ecff">模糊</text>
-            <text x="160" y="29"  text-anchor="middle" style="fill:#8ba4c9">回忆圈</text>
-            <text x="160" y="13"  text-anchor="middle" style="fill:#5a6d8c;font-size:7px">— 总库 —</text>
-          </svg>
-
-          <div class="legend">
-            <div class="legend-row" data-ring="core"><span class="swatch" style="background:var(--c-core)"></span><span class="name">圆心 · 自我圈</span><span class="num">—</span></div>
-            <div class="legend-row" data-ring="ring1"><span class="swatch" style="background:var(--c-r1)"></span><span class="name">一圈 · 极其强烈</span><span class="num">—</span></div>
-            <div class="legend-row" data-ring="ring2"><span class="swatch" style="background:var(--c-r2)"></span><span class="name">二圈 · 很开心 / 很难过</span><span class="num">—</span></div>
-            <div class="legend-row" data-ring="ring3"><span class="swatch" style="background:var(--c-r3)"></span><span class="name">三圈 · 有点意思</span><span class="num">—</span></div>
-            <div class="legend-row" data-ring="ring4"><span class="swatch" style="background:var(--c-r4)"></span><span class="name">四圈 · 闲聊圈</span><span class="num">—</span></div>
-            <div class="legend-row" data-ring="ring5"><span class="swatch" style="background:var(--c-r5)"></span><span class="name">五圈 · 模糊圈</span><span class="num">—</span></div>
-            <div class="legend-row" data-ring="recall"><span class="swatch" style="background:var(--c-recall)"></span><span class="name">回忆圈</span><span class="num">—</span></div>
-            <div class="legend-row" data-ring="vault"><span class="swatch" style="background:rgba(255,255,255,.18)"></span><span class="name">数据总库</span><span class="num">—</span></div>
-          </div>
-        </div>
-      </div>
-
-      <div class="card roomy">
-        <div class="card-title">今天</div>
-        <div class="card-desc">最近发生了什么。</div>
-        <table>
-          <tr><td class="label">当前模式</td><td><span class="pill ok" id="s-mode">—</span></td></tr>
-          <tr><td class="label">今天新记住</td><td class="num" id="s-remembered">—</td></tr>
-          <tr><td class="label">今天忘掉</td><td class="num" id="s-forgotten">—</td></tr>
-          <tr><td class="label">主动钉住</td><td class="num" id="s-pinned">—</td></tr>
-          <tr><td class="label">下次整理</td><td id="s-next">—</td></tr>
-        </table>
-      </div>
-
-      <div class="card roomy">
-        <div class="card-title">最近记下的</div>
-        <div class="card-desc">按记下的时间排，最新的在上面。</div>
-        <table id="recent-table">
-          <tr><th>记下的</th><th>在哪</th><th style="text-align:right">记于</th></tr>
-        </table>
-      </div>
-    </section>
 
     <!-- ══════ 记忆圈 ══════ -->
     <section class="page" id="page-rings">
@@ -1636,7 +1688,7 @@
     <section class="page" id="page-mode">
       <div class="page-head">
         <h1>记忆模式</h1>
-        <p>决定忘不忘、忘多少、能不能被提醒起来。</p>
+        <p>决定忘不忘、忘多少、能不能被提醒起来。她拆出几个点就算记了几件事；没拆的话，库按标点替她切，整条进闲聊圈。</p>
       </div>
 
       <div class="modes wide">
@@ -1718,20 +1770,24 @@
       </div>
 
       <div class="card wide">
-        <div class="card-title">元记忆 · 记什么</div>
+        <div class="card-title">元记忆</div>
         <div class="card-desc">
-          意识到自己忘过，会说出「总觉得有件事想不起来了」。拆点就是记：拆出互相独立的点就自己挑圈放，没拆就整条进闲聊圈。
+          她知不知道自己忘了。打开后，想起一件事时会知道自己漏了什么 —— 能说出「我总觉得有件事想不起来了」。
+          永不忘模式下这条不生效（什么都没忘，谈不上意识到）。
         </div>
         <div class="field">
-          <div><div class="field-label">意识到自己忘了</div><div class="field-hint">打开后才会把"想不起来"这件事说出来</div></div>
+          <div><div class="field-label">意识到自己忘了</div><div class="field-hint">打开后才会把「想不起来」这件事说出来</div></div>
           <div class="switch on" data-cfg="metaMemory"></div>
         </div>
       </div>
 
       <!-- 配额：原来单独一页，并到这里 -->
-      <div class="card wide">
-        <div class="card-title">私聊 / 群聊 怎么分</div>
-        <div class="card-desc">每一圈内部单独算。私聊有保底，群聊再闹也挤不掉。</div>
+      <div class="card wide locked" id="quota-card">
+        <div class="card-title">
+          私聊 / 群聊 怎么分
+          <button class="btn ghost btn-sm" id="quota-unlock" type="button">调整</button>
+        </div>
+        <div class="card-desc">每一圈内部单独算。私聊有保底，群聊再闹也挤不掉。<b>点「调整」才能拖动</b>，免得手滑改到。</div>
         <div class="field">
           <div><div class="field-label">私聊保底</div><div class="field-hint">永远留给私聊的位置</div></div>
           <div class="slider-row">
@@ -1897,21 +1953,15 @@
         </div>
         <div class="field">
           <div><div class="field-label">运行时间</div><div class="field-hint">建议放在没人聊天的时候</div></div>
-          <input type="time" id="compaction-time" value="04:00">
+          <div style="display:flex;gap:7px;align-items:center">
+            <input type="time" id="compaction-time" value="04:00" disabled style="flex:1;min-width:0">
+            <button class="btn" id="btn-unlock-time" type="button" style="flex:none">改时间</button>
+          </div>
         </div>
       </div>
 
-      <div class="card">
-        <div class="card-title">手动操作</div>
-        <div class="card-desc">想立刻看效果的时候用。</div>
-        <div class="btn-row" style="margin-top:6px">
-          <button class="btn primary">立刻跑一次</button>
-          <button class="btn">只演算，不写入</button>
-        </div>
-      </div>
     </section>
 
-    <!-- ══════ 记忆浏览 ══════ -->
     <!-- ══════ Token 消耗 ══════ -->
     <section class="page" id="page-token">
       <div class="page-head">
@@ -1921,7 +1971,7 @@
 
       <div class="banner info wide">
         <span class="bico">ℹ</span>
-        <span><b>数据仅供参考，不一定准确</b>（按本机账本算的，模型名缺失时按 flash 价兜底）。<br>数据来自 QQ 桥接的用量账本，<b>只读</b>。高峰时段是工作日 9:00–12:00 和 14:00–18:00，单价是空闲的 2 倍。</span>
+        <span><b>数据仅供参考，不一定准确</b>（按本机账本算的，模型名缺失时按 flash 价兜底）。<br>数据来自本机 DSH 用量账本（<code>~/.dsh/dsh-usage/usage-ledger.json</code>），<b>只读</b>，每次刷新自动重读。高峰时段是工作日 9:00–12:00 和 14:00–18:00，单价是空闲的 2 倍。</span>
       </div>
 
       <div class="btn-row" style="margin-bottom:14px">
@@ -1956,7 +2006,7 @@
         <div class="card-desc">谁花得多。私聊和群聊分开算。</div>
         <div class="scroll-box">
           <table id="token-sessions">
-            <thead><tr><th>会话</th><th>类型</th><th class="num">调用</th><th class="num">输入</th><th class="num">输出</th><th class="num">花费</th></tr></thead>
+            <thead><tr><th>会话 / 来源</th><th>类型</th><th class="num">调用</th><th class="num">输入</th><th class="num">输出</th><th class="num">花费</th></tr></thead>
             <tbody></tbody>
           </table>
         </div>
@@ -1982,22 +2032,53 @@
       </div>
     </section>
 
-    <section class="page" id="page-browse">
+    <!-- ══════ 记忆浏览（主页：原「概览」并在这里，以浏览为主）══════ -->
+    <section class="page active" id="page-browse">
       <div class="page-head">
         <h1>记忆浏览</h1>
-        <p>看看实际记得什么，忘了什么。</p>
+        <p>看看实际记得什么，忘了什么 —— 每圈装了多少、今天记下了几件，都在这一页。</p>
+      </div>
+
+      <div class="banner info wide" id="demo-banner">
+        <span class="bico">ℹ</span>
+        <span id="demo-text">正在读记忆库…</span>
+      </div>
+
+      <div class="stat-grid wide" id="browse-metrics">
+        <div class="stat">
+          <div class="stat-head"><span class="stat-dot"></span><span class="stat-label">记忆总数</span></div>
+          <div class="stat-main" id="b-total">—</div>
+          <div class="stat-sub" id="b-points">—</div>
+        </div>
+        <div class="stat ok">
+          <div class="stat-head"><span class="stat-dot"></span><span class="stat-label">今天新记住</span></div>
+          <div class="stat-main" id="b-remembered">—</div>
+          <div class="stat-sub" id="b-forgotten">忘掉 —</div>
+        </div>
+        <div class="stat">
+          <div class="stat-head"><span class="stat-dot"></span><span class="stat-label">主动钉住</span></div>
+          <div class="stat-main" id="b-pinned">—</div>
+          <div class="stat-sub">钉住的秘密，永不外出</div>
+        </div>
+        <div class="stat">
+          <div class="stat-head"><span class="stat-dot"></span><span class="stat-label">下次整理</span></div>
+          <div class="stat-main" id="b-next">—</div>
+          <div class="stat-sub" id="b-lastdecay">还没跑过</div>
+        </div>
       </div>
 
       <div class="card wide">
         <div class="card-title">各圈容量</div>
-        <div class="card-desc">这一圈最多装多少条，现在装了多少。</div>
+        <div class="card-desc">哪一圈装了多少、还剩多少位置。装满了会挤掉最老的，满了的格子会发红。</div>
         <div class="ring-cap-row" id="ring-cap-row"></div>
       </div>
 
       <div class="card wide">
-        <div style="display:flex;gap:9px;flex-wrap:wrap;margin-bottom:16px">
-          <input type="text" placeholder="搜内容……留空按时间列全部" style="flex:1;min-width:220px">
-          <select style="width:130px">
+        <div class="card-title">记忆列表</div>
+        <div class="card-desc">打开就铺最近 50 条，最新的在上面。想找哪条就搜，也可以只看某一圈；「剩余」是还看得见的点占原来的几成。</div>
+        <div class="browse-toolbar">
+          <input type="text" id="browse-q" placeholder="搜内容……留空按时间列全部">
+          <select id="browse-ring">
             <option>全部圈</option>
             <option>圆心</option>
             <option>一圈</option>
@@ -2007,14 +2088,15 @@
             <option>模糊圈</option>
             <option>回忆圈</option>
           </select>
-          <button class="btn">搜索</button>
+          <button class="btn" id="browse-go">搜索</button>
+          <span class="browse-count" id="browse-count"></span>
         </div>
-
-        <table id="browse-table">
-          <tr><th>记得的</th><th>在哪</th><th style="text-align:right">剩余</th><th>时间</th></tr>
-        </table>
+        <div class="scroll-box browse-scroll">
+          <table id="browse-table">
+            <tr><th>记得的</th><th>在哪</th><th style="text-align:right">剩余</th><th>时间</th></tr>
+          </table>
+        </div>
       </div>
-
 
     </section>
 
@@ -2064,9 +2146,9 @@
       </div>
 
       <div class="card wide">
-        <div class="card-title">网关细节</div>
-        <div class="card-desc">连上以后，这里放网关上报的运行数据。</div>
-        <div class="meta-rows" id="gw-detail"></div>
+        <div class="card-title">快速入口</div>
+        <div class="card-desc">网址、账户、密码 —— 点一下就能复制。带「改」的可以当场换。</div>
+        <div class="quick-grid" id="gw-detail"></div>
       </div>
 
       <div class="card wide">
@@ -2177,22 +2259,117 @@
     });
   });
 
+  // ── 元记忆在各模式下的默认值 ─────────────────────────
+  // 会忘的模式才需要「意识到自己忘了」；什么都不忘的模式给了没意义。
+  // 这跟 src/core/rings.js 里的 META_MEMORY_DEFAULT 必须一致。
+  const META_DEFAULT = {
+    forget: false,          // 自然淡忘，不自知才自然
+    'pseudo-forget': true,  // 「以为自己忘了」，元记忆是这个模式的核心
+    'never-forget': false,  // 什么都没忘
+    custom: true,
+  };
+  const MODE_LABEL = {
+    forget: '遗忘模式',
+    'pseudo-forget': '伪遗忘模式',
+    'never-forget': '永不忘记模式',
+    custom: '自定义',
+  };
+
   // 开关
   document.querySelectorAll('.switch').forEach((sw) => {
     if (sw.classList.contains('disabled')) return; // 没接字段的，点了也只换个色，没意义
-    sw.addEventListener('click', () => {
+    sw.addEventListener('click', async () => {
+      // 关掉自动整理：先说清楚后果
+      if (sw.dataset.cfg === 'compaction.enabled' && sw.classList.contains('on')) {
+        const ok = await openModal(
+          '关掉自动整理？',
+          '关掉之后，记忆不会再自动往下圈推。\n\n' +
+            '结果是：记下的东西会一直留在原来的圈里 —— 不会变淡，也不会被忘掉。\n\n' +
+            '「总库」和已经忘掉的记忆不受影响。随时可以再打开。',
+          { ok: '关掉', cancel: '保持开启', danger: true }
+        );
+        if (!ok) return;
+      }
+
+      // 元记忆：跟当前模式的默认值相反时，说清楚再确认。
+      // 想打开、但当前不是伪遗忘 → 直接建议切到伪遗忘模式，那里才是它该在的地方。
+      if (sw.dataset.cfg === 'metaMemory') {
+        const want = !sw.classList.contains('on');
+        const def = META_DEFAULT[selectedMode] ?? true;
+        if (want !== def) {
+          const label = MODE_LABEL[selectedMode] || '当前模式';
+          let title;
+          let body;
+
+          if (want && selectedMode !== 'pseudo-forget') {
+            // 遗忘 / 永不忘 / 自定义 → 想打开：建议伪遗忘
+            title = '这里开元记忆不合适';
+            body =
+              '「' + label + '」下元记忆默认是关的。\n\n' +
+              (selectedMode === 'never-forget'
+                ? '这个模式一个点都不会忘，元记忆没有实际作用 —— 她不会真的忘记任何东西。'
+                : '这个模式她真的会忘，但不该自知 —— 让她时刻惦记着漏了几个点，就不是自然淡忘，是一直在焦虑。') +
+              '\n\n建议切到「伪遗忘模式」：那个模式她其实全记得，元记忆正好用来演「我知道有，但想不起细节」。' +
+              '\n\n确实要在这里打开吗？';
+          } else if (!want && selectedMode === 'pseudo-forget') {
+            // 伪遗忘 → 想关：这个模式最需要它
+            title = '关掉元记忆？';
+            body =
+              '「伪遗忘模式」下元记忆默认是开的，这是它最核心的机制。\n\n' +
+              '关掉之后，她就说不出「我记得好像有，但想不起细节」了 —— ' +
+              '伪遗忘和普通遗忘在表现上会变得没区别。\n\n确定要关吗？';
+          } else {
+            // 其他组合（自定义）
+            title = want ? '打开元记忆？' : '关掉元记忆？';
+            body =
+              '「' + label + '」下元记忆默认是' + (def ? '开' : '关') + '的。\n\n确定要改吗？';
+          }
+
+          const ok2 = await openModal(title, body, {
+            ok: want ? '仍然打开' : '仍然关掉',
+            cancel: '算了',
+          });
+          if (!ok2) return;
+        }
+      }
+
       sw.classList.toggle('on');
       markDirty();
     });
   });
 
-  // 有点圆圈跳到记忆圈页
-  document.querySelectorAll('.ring-svg circle[data-ring]').forEach((c) => {
-    c.addEventListener('click', () => {
-      const nav = document.querySelector('.nav-item[data-page="rings"]');
-      if (nav) nav.click();
+  // 改运行时间：先警告，确认后才解锁输入框
+  (() => {
+    const btn = document.getElementById('btn-unlock-time');
+    const inp = document.getElementById('compaction-time');
+    if (!btn || !inp) return;
+
+    const lock = () => {
+      inp.disabled = true;
+      btn.textContent = '改时间';
+      btn.classList.remove('primary');
+    };
+
+    btn.addEventListener('click', async () => {
+      if (!inp.disabled) { lock(); return; }   // 已经开着，再点就是锁上
+
+      const ok = await openModal(
+        '改运行时间？',
+        '每天到这个点，记忆会自动往下一圈推 —— 推到底的那些就忘掉了。\n\n' +
+          '挪动时间会改变这个节奏：\n' +
+          '· 往后挪，旧的记忆会多留一会儿\n' +
+          '· 往前挪，会更早开始掉圈\n\n' +
+          '改完记得点下面的「保存」。',
+        { ok: '我要改', cancel: '算了' }
+      );
+      if (!ok) return;
+
+      inp.disabled = false;
+      btn.textContent = '锁上';
+      btn.classList.add('primary');
+      inp.focus();
     });
-  });
+  })();
 
   // 改动提示
   function markDirty() {
@@ -2257,6 +2434,17 @@
 
   const bindings = findBindings();
 
+  // ── 私聊/群聊配额：默认锁住，点「调整」才放开 ──────────
+  // 那两个滑块不分模式都显示，又容易手滑带过去，所以默认不给拖。
+  const quotaCard = document.getElementById('quota-card');
+  const quotaBtn = document.getElementById('quota-unlock');
+  if (quotaCard && quotaBtn) {
+    quotaBtn.addEventListener('click', () => {
+      const nowLocked = quotaCard.classList.toggle('locked');
+      quotaBtn.textContent = nowLocked ? '调整' : '完成';
+    });
+  }
+
   const dig = (obj, path) => path.split('.').reduce((o, k) => (o == null ? o : o[k]), obj);
 
   /** 把库里的配置填到控件上 */
@@ -2288,7 +2476,9 @@
     };
 
     for (const b of bindings) {
-      if (b.el.disabled) continue; // 锁住的项不往库里写
+      // disabled = 一直不许改（比如闲聊圈的渐变）；
+      // .locked  = 用户没点「调整」，也不许写 —— 免得手滑带动滑块改了配额
+      if (b.el.disabled || b.el.closest('.locked')) continue;
       // 不是自定义模式时，比例由模式内置值决定，不覆盖自定义那套
       if (b.path.startsWith('customRatios.') && selectedMode && selectedMode !== 'custom') continue;
       const raw = b.el.value;
@@ -2841,9 +3031,21 @@
       if (!card.dataset.mode) return;
       // 点的就是现在这个 → 什么都没变，不该标成"有改动"
       if (selectedMode === card.dataset.mode && card.classList.contains('active')) return;
+
+      const nextMode = card.dataset.mode;
+
+      // 元记忆跟着模式走：静默套用该模式的默认值，不弹窗。
+      // 切模式本身就是"换一套行为"，元记忆是这个套装的一部分，
+      // 再问一句"要不要一起改"只会多一次点击。
+      // （真正需要确认的是「手动改开关」，那在下面的 switch 处理里。）
+      const metaSw = document.querySelector('.switch[data-cfg="metaMemory"]');
+      if (metaSw && !metaSw.classList.contains('disabled')) {
+        metaSw.classList.toggle('on', META_DEFAULT[nextMode] ?? true);
+      }
+
       document.querySelectorAll('.mode').forEach((c) => c.classList.remove('active'));
       card.classList.add('active');
-      selectedMode = card.dataset.mode;
+      selectedMode = nextMode;
       renderModeFacts(selectedMode); // 下面那排数值也跟着换
       // 绕一圈又回到原来那个模式 = 什么都没改，不该催人保存
       if (savedMode && selectedMode === savedMode) markClean();
@@ -3267,60 +3469,6 @@
   const esc = (s) =>
     String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 
-  const findBtn = (text) => [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === text);
-
-  /** 跑一轮完整的变旧（真写），然后刷新画面 */
-  findBtn('立刻跑一次')?.addEventListener('click', async (ev) => {
-    const b = ev.currentTarget;
-    const was = b.textContent;
-    b.disabled = true;
-    b.textContent = '跑着呢…';
-    try {
-      const r = await api('/api/decay', { method: 'POST' });
-      const n = (r.plan || []).length;
-      const gone = r.forgotten ?? 0;
-      const soft = r.softened ?? 0;
-      alert('跑完了：动到 ' + n + ' 条，掉圈 ' + gone + ' 条，变淡 ' + soft + ' 条。');
-      location.reload();
-    } catch (e) {
-      alert('没跑成：' + e.message);
-    } finally {
-      b.disabled = false;
-      b.textContent = was;
-    }
-  });
-
-  /** 只算不写 */
-  findBtn('只演算，不写入')?.addEventListener('click', async () => {
-    try {
-      const d = await api('/api/decay-preview');
-      const plan = d.plan || [];
-      if (!plan.length) return alert('这会儿没有要动的记忆。');
-      const lines = plan.slice(0, 20).map((p) => '· ' + (p.ringLabel || p.ring) + ' → ' + (RING_LABEL[p.to] || p.to));
-      alert('会有 ' + plan.length + ' 条要动（没写入）：\n\n' + lines.join('\n') + (plan.length > 20 ? '\n…还有 ' + (plan.length - 20) + ' 条' : ''));
-    } catch (e) {
-      alert('算不出来：' + e.message);
-    }
-  });
-
-  /** 相对时间：刚刚 / 3 分钟前 / 2 小时前 / 昨天 / 5 天前 / 具体日期 */
-  function relWhen(ts) {
-    if (!ts) return '';
-    const d = ts instanceof Date ? ts : new Date(Number(ts) || ts);
-    const v = d.getTime();
-    if (!Number.isFinite(v)) return '';
-    const diff = Date.now() - v;
-    const min = Math.floor(diff / 60000);
-    if (min < 1) return '刚刚';
-    if (min < 60) return min + ' 分钟前';
-    const hr = Math.floor(min / 60);
-    if (hr < 24) return hr + ' 小时前';
-    const day = Math.floor(hr / 24);
-    if (day === 1) return '昨天';
-    if (day < 30) return day + ' 天前';
-    return d.toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' });
-  }
-
   const RING_LABEL = {
     core: '圆心',
     ring1: '一圈',
@@ -3331,12 +3479,14 @@
     recall: '回忆圈',
   };
 
-  /** 搜索：把结果铺回表格 */
-  const searchBtn = findBtn('搜索');
-  if (searchBtn) {
-    const input = searchBtn.parentElement.querySelector('input[type="text"]');
-    const ringSel = searchBtn.parentElement.querySelector('select');
-    const table = searchBtn.closest('.card')?.querySelector('table');
+  /** 搜索：把结果铺回记忆列表。空关键词 = 按时间铺最近 50 条，页面加载也走这一套 */
+  let runBrowseSearch = null;
+  {
+    const input = document.getElementById('browse-q');
+    const ringSel = document.getElementById('browse-ring');
+    const goBtn = document.getElementById('browse-go');
+    const countEl = document.getElementById('browse-count');
+    const table = document.getElementById('browse-table');
 
     const RING_BY_OPT = {
       '全部圈': '',
@@ -3358,6 +3508,7 @@
         );
         if (Array.isArray(hits) === false) hits = [];
         if (!table) return;
+        if (countEl) countEl.textContent = '共 ' + hits.length + ' 条';
         const head = table.querySelector('tr:first-child')?.outerHTML || '';
         if (!hits.length) {
           table.innerHTML = head + '<tr><td colspan="4" style="color:var(--dim)">没搜到</td></tr>';
@@ -3369,12 +3520,15 @@
             .map((m) => {
               const pts = m.points || [];
               const vis = pts.filter((p) => p.visible).length;
-              const when = m.created_at ? new Date(m.created_at).toLocaleDateString('zh-CN') : '';
+              const when = m.created_at
+                ? new Date(m.created_at).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' })
+                : '';
+              const pct = pts.length > 0 ? Math.round((vis / pts.length) * 100) : 0;
               return (
                 '<tr><td>' + esc(String(m.content).slice(0, 60)) + '</td>' +
-                '<td><span class="pill">' + esc(m.ringLabel || RING_LABEL[m.ring] || m.ring) + '</span></td>' +
-                '<td class="num">' + vis + ' / ' + pts.length + '</td>' +
-                '<td>' + when + '</td></tr>'
+                '<td class="nowrap"><span class="pill">' + esc(m.ringLabel || RING_LABEL[m.ring] || m.ring) + '</span></td>' +
+                '<td class="num" title="还剩 ' + vis + ' / ' + pts.length + ' 个点">' + pct + '%</td>' +
+                '<td class="muted">' + when + '</td></tr>'
               );
             })
             .join('');
@@ -3383,7 +3537,8 @@
       }
     };
 
-    searchBtn.addEventListener('click', runSearch);
+    runBrowseSearch = runSearch;
+    goBtn?.addEventListener('click', runSearch);
     input?.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') runSearch();
     });
@@ -3750,29 +3905,6 @@
         fillMode(cfg.mode);
       } catch {}
 
-      // 图例：每圈现在有几条
-      for (const row of document.querySelectorAll('.legend-row[data-ring]')) {
-        const id = row.dataset.ring;
-        const num = row.querySelector('.num');
-        if (!num) continue;
-        if (id === 'vault') {
-          num.textContent = Number(data.vault || 0).toLocaleString();
-        } else {
-          const ring = data.rings.find((x) => x.id === id);
-          num.textContent = Number(ring?.total || 0).toLocaleString();
-          if (ring && ring.cap) num.title = '容量 ' + ring.cap;
-        }
-      }
-
-      // 环形图：哪个圈有东西就点亮一点
-      const maxTotal = Math.max(1, ...data.rings.map((x) => x.total || 0));
-      for (const c of document.querySelectorAll('.ring-svg circle[data-ring]')) {
-        const ring = data.rings.find((x) => x.id === c.dataset.ring);
-        const n = ring?.total || 0;
-        const base = Number(c.getAttribute('opacity') || 0.6);
-        c.setAttribute('opacity', n === 0 ? Math.min(base, 0.16) : base);
-      }
-
       if (text) {
         text.textContent =
           `已接上记忆库 · ${data.name || '未命名'} · ${data.modeLabel} · ` +
@@ -3813,20 +3945,21 @@
         });
       });
 
-      const [st, cfg2, modes, recent] = await Promise.all([
+      const [st, cfg2, modes] = await Promise.all([
         api('/api/stats').catch(() => null),
         api('/api/config').catch(() => null),
         api('/api/modes').catch(() => null),
-        api('/api/recent').catch(() => null),
       ]);
 
       const coreCap = data.rings.find((r) => r.id === 'core')?.cap;
 
       if (st) {
-        put('s-mode', data.modeLabel || '—');
-        put('s-remembered', st.remembered ? st.remembered + ' 件' : '0 件');
-        put('s-forgotten', st.forgotten ? st.forgotten + ' 件' : '0 件');
-        put('s-pinned', coreCap ? st.pinned + ' / ' + coreCap : String(st.pinned));
+        put('b-total', num(st.memories) + ' 条');
+        put('b-points', num(st.points) + ' 个点' + (st.pointsGone ? '（看不见 ' + num(st.pointsGone) + '）' : ''));
+        put('b-remembered', (st.remembered || 0) + ' 件');
+        put('b-forgotten', '忘掉 ' + (st.forgotten || 0) + ' 件');
+        put('b-pinned', coreCap ? st.pinned + ' / ' + coreCap : String(st.pinned));
+        put('b-lastdecay', st.lastDecay ? '上次整理 ' + new Date(st.lastDecay.at).toLocaleDateString('zh-CN') : '还没跑过');
         put('d-memories', num(st.memories));
         put('d-points', num(st.points) + (st.pointsGone ? `（看不见 ${num(st.pointsGone)}）` : ''));
         put('d-bytes', fmtBytes(st.bytes));
@@ -3849,7 +3982,7 @@
       if (cfg2) {
         const hh = String(cfg2.compaction.hour).padStart(2, '0');
         const mm = String(cfg2.compaction.minute).padStart(2, '0');
-        put('s-next', cfg2.compaction.enabled ? '明天 ' + hh + ':' + mm : '已关掉');
+        put('b-next', cfg2.compaction.enabled ? '明天 ' + hh + ':' + mm : '已关掉');
         const t = document.getElementById('compaction-time');
         if (t) t.value = hh + ':' + mm;
         const p = document.getElementById('db-path');
@@ -3866,71 +3999,32 @@
         }
       }
 
-      // 最近记下的
-      const rt = document.getElementById('recent-table');
-      if (rt && Array.isArray(recent)) {
-        const head = rt.querySelector('tr:first-child')?.outerHTML || '';
-        rt.innerHTML =
-          head +
-          (recent.length
-            ? recent
-                .map(
-                  (m) =>
-                    '<tr><td>' +
-                    esc(String(m.content).slice(0, 28)) +
-                    '</td><td class="nowrap"><span class="pill">' +
-                    esc(m.ringLabel) +
-                    '</span></td><td class="num" title="' +
-                    (m.created_at ? new Date(m.created_at).toLocaleString('zh-CN') : '') +
-                    '">' +
-                    relWhen(m.created_at) +
-                    '</td></tr>'
-                )
-                .join('')
-            : '<tr><td colspan="3" style="color:var(--dim)">库里还没有记忆</td></tr>');
-      }
-
       // 模式：把选中那档的数值铺成条
       MODES_CACHE = modes;
       renderModeFacts(selectedMode || data.mode);
 
-      // 记忆浏览：默认铺最近 8 条
-      const bt = document.getElementById('browse-table');
-      if (bt && Array.isArray(recent)) {
-        const head = bt.querySelector('tr:first-child')?.outerHTML || '';
-        bt.innerHTML =
-          head +
-          (recent.length
-            ? recent
-                .map((m) => {
-                  const when = m.created_at
-                    ? new Date(m.created_at).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' })
-                    : '';
-                  return (
-                    '<tr><td>' + esc(String(m.content).slice(0, 34)) + '</td>' +
-                    '<td class="nowrap"><span class="pill">' + esc(m.ringLabel) + '</span></td>' +
-                    '<td class="num" title="还剩 ' + m.visible + ' / ' + m.points + ' 个点">' +
-                    (m.points > 0 ? Math.round((m.visible / m.points) * 100) : 0) + '%</td>' +
-                    '<td class="muted">' + when + '</td></tr>'
-                  );
-                })
-                .join('')
-            : '<tr><td colspan="4" style="color:var(--dim)">库里还没有记忆</td></tr>');
-      }
+      // 记忆列表：打开页面就铺最近 50 条，和点「搜索」留空是同一套
+      if (runBrowseSearch) runBrowseSearch();
 
       // 各圈容量：横排卡片
       const ct = document.getElementById('ring-cap-row');
       if (ct && Array.isArray(data.rings)) {
+        // 每圈的代表色（跟记忆海/面板 :root 的 --c-* 同一套）
+        const CAP_RGB = {
+          core: '255,212,121', ring1: '255,160,121', ring2: '255,127,168', ring3: '185,140,255',
+          ring4: '111,168,255', ring5: '74,127,212', recall: '47,84,136',
+        };
         ct.innerHTML =
           data.rings
             .map((r) => {
+              const rgb = CAP_RGB[r.id] || '255,255,255';
               const cap = r.cap == null ? '∞' : r.cap;
               const cur = r.total == null ? 0 : r.total;
               const full = r.cap != null && r.cap > 0 && cur >= r.cap;
               const when = r.days == null ? '一直在' : r.days + ' 天';
               const pct = r.cap != null && r.cap > 0 ? Math.min(100, Math.round((cur / r.cap) * 100)) : 0;
               return (
-                '<div class="cap-cell' + (full ? ' full' : '') + '" title="' + esc(r.desc || '') + '">' +
+                '<div class="cap-cell' + (full ? ' full' : '') + '" style="--ring-rgb:' + rgb + '" title="' + esc(r.desc || '') + '">' +
                 '<div class="cap-name">' + esc(r.label) + '</div>' +
                 '<div class="cap-num"><b>' + cur + '</b><span> / ' + cap + '</span></div>' +
                 '<div class="cap-bar"><i style="width:' + pct + '%"></i></div>' +
@@ -4003,32 +4097,114 @@
         put('hf-gw', ob.online ? '在线' : ob.reachable ? '有响应' : '断开');
         put('hf-check', new Date().toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit' }));
 
-        // 网关细节：地址、令牌、状态，令牌可当场改
+        // 快速入口：网址 / 账户 / 密码，三样放大加亮
         const gd = document.getElementById('gw-detail');
         if (gd) {
-          /** 一条：标签 / 值 / 可选「改」 */
-          const row = (k, v, editKey) => {
+          /** 一行：标签 + 值（点一下复制）+ 可选「改」 */
+          const line = (k, v, cls, editKey) => {
+            const empty = v == null || v === '' || v === '—';
+            const shown = empty ? '—' : String(v);
             const btn = editKey
               ? '<button class="mini-edit" data-edit="' + editKey + '" type="button">改</button>'
               : '';
             return (
-              '<div class="meta-row"><span class="meta-k">' + esc(k) +
-              '</span><span class="meta-v">' + esc(String(v ?? '—')) + '</span>' + btn + '</div>'
+              '<div class="qe-row"><span class="qe-k">' + esc(k) + '</span>' +
+              '<span class="qe-v ' + (empty ? 'empty' : cls) + '"' +
+              (empty ? '' : ' data-copy="' + esc(shown) + '" title="点一下复制"') +
+              '>' + esc(shown) + '</span>' + btn + '</div>'
             );
           };
-          const rows = [];
-          rows.push(row('面板地址', sv.url || ('http://' + sv.host + ':' + sv.port)));
-          rows.push(row('面板令牌', sv.token || '—', 'panel'));
-          rows.push(row('OneBot 地址', ob.url || '—', 'onebot-url'));
-          rows.push(row('OneBot 令牌', ob.token || '—', 'onebot-token'));
-          if (ob.app) rows.push(row('协议端', ob.app + ' ' + (ob.version || '')));
-          if (ob.uptime != null) rows.push(row('已运行', fmtSec(ob.uptime)));
-          if (ob.online != null) rows.push(row('在线', ob.online ? '是' : '否'));
-          rows.push(row('记忆库', db.path || '—'));
-          if (!ob.reachable) rows.push(row('错误', ob.error || '没响应'));
-          else if (!ob.authorized) rows.push(row('错误', '令牌不对（401）'));
-          else if (!qq) rows.push(row('错误', '没拿到登录信息'));
-          gd.innerHTML = rows.join('');
+
+          /** 一张卡 */
+          const card = (tag, ico, title, sub, rowsHtml, footHtml) =>
+            '<div class="qe">' +
+              '<div class="qe-top"><span class="qe-tag">' + esc(tag) + '</span>' +
+              '<span class="qe-ico">' + ico + '</span>' +
+              '<div class="qe-head"><div class="qe-title">' + esc(title) + '</div>' +
+              '<div class="qe-sub">' + esc(sub) + '</div></div></div>' +
+              '<div class="qe-rows">' + rowsHtml + '</div>' +
+              (footHtml || '') +
+            '</div>';
+
+          const panelUrl = sv.url || ('http://' + sv.host + ':' + sv.port);
+
+          // SnowLuma 控制台地址和密码都由服务端给（存在 onebot.json 里，一次即可）
+          let consoleUrl = ob.consoleUrl || '';
+          if (!consoleUrl) {
+            try {
+              const u = new URL(ob.url || 'http://127.0.0.1:3000');
+              consoleUrl = u.protocol + '//' + u.hostname + ':5099';
+            } catch { consoleUrl = 'http://127.0.0.1:5099'; }
+          }
+          const consolePw = ob.consolePassword || '';
+          const conAuto = Boolean(ob.consoleAuto);
+
+          const openBtn = (url, label) =>
+            '<div class="qe-foot"><button class="qe-open" data-open="' + esc(url) + '" type="button">' +
+            '↗ ' + esc(label) + '</button></div>';
+
+          const cards = [];
+
+          cards.push(card(
+            '面板', '◉', '记忆面板',
+            '记忆库 · 设置 · 令牌',
+            line('网址', panelUrl, 'url') +
+            line('账户', db.name || '—', 'user') +
+            line('密码', sv.token || '—', 'pass', 'panel'),
+            openBtn(panelUrl, '打开面板')
+          ));
+
+          cards.push(card(
+            '控制台', '⚡', 'SnowLuma 控制台',
+            conAuto ? '地址自动识别 · 密码在 SnowLuma 里设' : 'QQ 网关 · 账号 · OneBot 连接',
+            line('网址', consoleUrl, 'url') +
+            line('账户', '免登录', 'user') +
+            line('密码', consolePw || '还没存', 'pass'),
+            openBtn(consoleUrl, '打开控制台')
+          ));
+
+          // 第三块空着
+          cards.push('<div class="qe-blank">·</div>');
+
+          // 出错时在最前面补一条，别让问题藏着
+          let warn = '';
+          if (!ob.reachable) warn = '<div class="banner warn wide" style="margin-bottom:12px">网关连不上：' + esc(ob.error || '没响应') + '</div>';
+          else if (!ob.authorized) warn = '<div class="banner warn wide" style="margin-bottom:12px">OneBot 端口通，但令牌不对（401）</div>';
+          else if (!qq) warn = '<div class="banner warn wide" style="margin-bottom:12px">OneBot 有响应，但 QQ 没登录</div>';
+
+          gd.innerHTML = warn + cards.join('');
+
+          // 点「打开」→ 新窗口
+          gd.querySelectorAll('[data-open]').forEach((b) => {
+            b.addEventListener('click', () => {
+              window.open(b.dataset.open, '_blank', 'noopener');
+            });
+          });
+
+          // 点一下复制
+          gd.querySelectorAll('[data-copy]').forEach((el) => {
+            el.addEventListener('click', () => {
+              const v = el.dataset.copy;
+              const done = () => {
+                const old = el.textContent;
+                el.textContent = '已复制';
+                el.classList.add('qe-copied');
+                setTimeout(() => { el.textContent = old; el.classList.remove('qe-copied'); }, 900);
+              };
+              if (navigator.clipboard?.writeText) {
+                navigator.clipboard.writeText(v).then(done).catch(() => fallback());
+              } else { fallback(); }
+              function fallback() {
+                const ta = document.createElement('textarea');
+                ta.value = v;
+                ta.style.cssText = 'position:fixed;opacity:0';
+                document.body.appendChild(ta);
+                ta.select();
+                try { document.execCommand('copy'); done(); } catch { alert(v); }
+                ta.remove();
+              }
+            });
+          });
 
           // 改令牌 / 改地址
           gd.querySelectorAll('[data-edit]').forEach((b) => {

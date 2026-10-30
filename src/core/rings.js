@@ -234,12 +234,51 @@ export const MODES = {
 };
 
 /** 默认配置：一个全新记忆库的初始状态 */
+/**
+ * 元记忆在每个模式下的默认值。
+ *
+ * 「元记忆」= 她知不知道自己忘了。
+ *
+ * 它给的信息是「这条记忆有几个点、你想起了几个、还剩几个」（见 recall.js 的 gap）。
+ * 这个信息很重 —— 她一旦知道，就会反复想「我是不是忘了什么」。
+ *
+ *   - 伪遗忘：**开**。这个模式她其实全记得，只是默认没拿出来。
+ *     「我记得好像有这回事，但细节想不起来了」正是它的表演，
+ *     被提醒一下就全回来 —— 元记忆和这个模式是一体的。
+ *   - 遗忘：**关**。这个模式追求自然淡忘：她确实记不全，但她不自知、不纠结。
+ *     让她时刻知道自己漏了几个点，就不是「最像人」了，是「一直在焦虑」。
+ *   - 永不忘：**关**。一个点都不少，谈不上「意识到自己忘了」。
+ *   - 自定义：**开**。交给用户自己配。
+ *
+ * 这只是「默认值」——用户可以在面板上改，改的时候会提示。
+ * 真正的生效判断在 recall.js 里：永不忘模式下即使用户开着也不给缺口。
+ */
+export const META_MEMORY_DEFAULT = {
+  forget: false,
+  "pseudo-forget": true,
+  "never-forget": false,
+  custom: true,
+};
+
+/** 某个模式下，元记忆默认该不该开 */
+export function metaMemoryDefaultOf(mode) {
+  if (mode in META_MEMORY_DEFAULT) return META_MEMORY_DEFAULT[mode];
+  return true;
+}
+
+/** 各种记忆模式的预设比例 */
+
 export const DEFAULT_CONFIG = {
   /** forget | pseudo-forget | never-forget | custom */
   mode: "forget",
 
-  /** 允许她意识到自己忘了（元记忆） */
-  metaMemory: true,
+  /**
+   * 允许她意识到自己忘了（元记忆）。
+   *
+   * 新建的库默认是 forget 模式，而那个模式不该有元记忆（见 META_MEMORY_DEFAULT），
+   * 所以这里跟着设 false —— 保证「新建一个库」和「切到遗忘模式」的默认值一致。
+   */
+  metaMemory: false,
 
   /** 各圈的停留天数与容量；null 表示不限制 */
   rings: Object.fromEntries(
