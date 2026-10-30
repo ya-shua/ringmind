@@ -1,0 +1,119 @@
+/**
+ * 环形的心 · 数据库结构
+ *
+ * 设计要点：
+ * 1. 所有"点"都存在 points 表里，靠 visible / buffered 两个标记控制她能看到多少
+ *    —— 不存两份，避免不一致
+ * 2. 点的删除是"确定性"的：降级那一刻就定死，之后每次想起来内容一致
+ * 3. 总库（vault）单独一张表，她访问不到
+ */
+
+/** 结构版本，将来迁移用 */
+export const SCHEMA_VERSION = 2;
+
+export const SCHEMA_SQL = `
+PRAGMA journal_mode = WAL;
+PRAGMA foreign_keys = ON;
+
+-- 元信息：结构版本、库名、创建时间等
+CREATE TABLE IF NOT EXISTS meta (
+  key   TEXT PRIMARY KEY,
+  value TEXT
+);
+
+-- 数据总库：原始存档，她访问不到
+CREATE TABLE IF NOT EXISTS vault (
+  id      INTEGER PRIMARY KEY AUTOINCREMENT,
+  ts      INTEGER NOT NULL,
+  source  TEXT,              -- private | group
+  speaker TEXT,              -- user | self
+  text    TEXT NOT NULL,
+  meta    TEXT               -- 附加信息（JSON）
+);
+CREATE INDEX IF NOT EXISTS idx_vault_ts ON vault(ts);
+
+-- 记忆条目
+CREATE TABLE IF NOT EXISTS memories (
+  id         TEXT PRIMARY KEY,
+  created_at INTEGER NOT NULL,
+  ring_entered_at INTEGER NOT NULL DEFAULT 0, -- 进当前这一圈的时间（掉圈即归零）
+  born_load  INTEGER NOT NULL DEFAULT 0,   -- 产生时的全局消息计数
+  ring       TEXT    NOT NULL,             -- core/ring1..ring5/recall
+  source     TEXT    NOT NULL,             -- private | group
+  speaker    TEXT    NOT NULL,             -- user | self
+  content    TEXT    NOT NULL,             -- 把点串起来的一句话
+  emotion    REAL    DEFAULT 0,            -- 0..10
+  hits       INTEGER DEFAULT 0,            -- 被想起的次数
+  pinned     INTEGER DEFAULT 0,            -- 是否被她钉住
+  note       TEXT,                         -- 批注（更正、存疑）
+  updated_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_mem_ring   ON memories(ring);
+CREATE INDEX IF NOT EXISTS idx_mem_source ON memories(source);
+CREATE INDEX IF NOT EXISTS idx_mem_born   ON memories(created_at);
+
+-- 点（细节点 / 钩子）
+--   weight   : 她的排序，1 = 最看重；NULL = 没进钩子列表
+--   visible  : 现在还能不能"看见"
+--   buffered : 看不见了，但缓冲圈里还留着一份
+CREATE TABLE IF NOT EXISTS points (
+  id        INTEGER PRIMARY KEY AUTOINCREMENT,
+  memory_id TEXT    NOT NULL,
+  text      TEXT    NOT NULL,
+  weight    INTEGER,
+  visible   INTEGER DEFAULT 1,
+  buffered  INTEGER DEFAULT 0,
+  FOREIGN KEY (memory_id) REFERENCES memories(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_pt_mem  ON points(memory_id);
+CREATE INDEX IF NOT EXISTS idx_pt_text ON points(text);
+CREATE INDEX IF NOT EXISTS idx_pt_w    ON points(memory_id, weight);
+
+-- 表情记录：只记编号 + 意思 + 描述，不存图
+CREATE TABLE IF NOT EXISTS stickers (
+  id        INTEGER PRIMARY KEY AUTOINCREMENT,
+  sticker_id TEXT NOT NULL,          -- QQ 给的稳定编号
+  meaning   TEXT,                    -- 摸鱼 / 偷懒
+  desc      TEXT,                    -- 一条蓝色小鱼趴在桌上
+  used_at   INTEGER,
+  context   TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_stk_used ON stickers(used_at);
+
+-- 操作日志：谁在什么时候动了什么（调试与回滚用）
+CREATE TABLE IF NOT EXISTS ops (
+  id      INTEGER PRIMARY KEY AUTOINCREMENT,
+  ts      INTEGER NOT NULL,
+  kind    TEXT NOT NULL,             -- demote / promote / forget / pin / edit
+  payload TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_ops_ts ON ops(ts);
+`;
+
+/**
+ * 从老版本升上来。
+ * v1 → v2：memories 加 ring_entered_at（掉圈计时锚点）。
+ *          老的库一律用 created_at 回填 —— 它们本来就没记过进圈时间。
+ */
+export function migrate(db, fromVersion) {
+  const v = Number(fromVersion ?? 0);
+
+  if (v < 2) {
+    const cols = db.prepare("PRAGMA table_info(memories)").all().map((c) => c.name);
+    if (!cols.includes("ring_entered_at")) {
+      db.exec("ALTER TABLE memories ADD COLUMN ring_entered_at INTEGER NOT NULL DEFAULT 0");
+    }
+    db.exec("UPDATE memories SET ring_entered_at = created_at WHERE ring_entered_at = 0");
+  }
+
+  return SCHEMA_VERSION;
+}
+
+/** 首次建库时要写入的元信息 */
+export function metaSeed(name) {
+  return [
+    ["schema_version", String(SCHEMA_VERSION)],
+    ["name", name ?? "未命名"],
+    ["created_at", String(Date.now())],
+  ];
+}

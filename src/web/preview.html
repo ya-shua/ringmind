@@ -1,0 +1,4189 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>环形的心 · 记忆面板</title>
+<style>
+  :root {
+    --glass:        rgba(255,255,255,.045);
+    --glass-strong: rgba(255,255,255,.075);
+    --glass-hover:  rgba(255,255,255,.09);
+    --border:       rgba(255,255,255,.08);
+    --border-soft:  rgba(255,255,255,.05);
+    --text:         #eef2f8;
+    --dim:          rgba(238,242,248,.56);
+    --faint:        rgba(238,242,248,.30);
+    --accent:       #7fb0ff;
+    --accent-glow:  rgba(127,176,255,.22);
+    --warn:         #ffc06b;
+    --danger:       #ff7d7d;
+    --ok:           #6ee7a0;
+
+    --c-core:   #ffd479;
+    --c-r1:     #ffa079;
+    --c-r2:     #ff7fa8;
+    --c-r3:     #b98cff;
+    --c-r4:     #6fa8ff;
+    --c-r5:     #4a7fd4;
+    --c-recall: #2f5488;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body { height: 100%; }
+
+  body {
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
+    font-size: 14px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+    background: #05080f;
+    overflow-x: hidden;
+  }
+
+  /* ── 背景：素色渐变，色相差很小，只做呼吸感 ────────────── */
+  .bg {
+    position: fixed;
+    inset: 0;
+    z-index: -3;
+    background:
+      radial-gradient(ellipse 78% 58% at 16% 8%,  rgba(104,126,176,.075), transparent 64%),
+      radial-gradient(ellipse 72% 56% at 84% 12%, rgba(126,110,170,.065), transparent 66%),
+      radial-gradient(ellipse 96% 72% at 50% 104%, rgba(58,80,126,.095), transparent 72%),
+      linear-gradient(168deg, #0a0d15 0%, #0b0f18 38%, #090c13 72%, #0a0d14 100%);
+  }
+
+  /* 极淡的一层，只让中间比四周亮一点点 */
+  .bg::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 62% 50% at 50% 34%, rgba(150,172,214,.035), transparent 72%);
+  }
+
+  /* 压暗：只压边角，中间几乎不动 */
+  .bg-veil {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background:
+      radial-gradient(ellipse 72% 82% at 50% 42%, transparent 0%, rgba(7,10,16,.30) 66%, rgba(7,10,16,.62) 100%);
+  }
+
+  /* ── 顶栏 ───────────────────────────────── */
+  header {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    height: 62px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 0 26px;
+    background: rgba(8,12,22,.55);
+    backdrop-filter: blur(24px) saturate(140%);
+    -webkit-backdrop-filter: blur(24px) saturate(140%);
+    border-bottom: 1px solid var(--border-soft);
+  }
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: .4px;
+  }
+
+  .brand-mark {
+    width: 24px; height: 24px;
+    border-radius: 50%;
+    background: conic-gradient(var(--c-core), var(--c-r2), var(--c-r4), var(--c-recall), var(--c-core));
+    box-shadow: 0 0 18px rgba(127,176,255,.35);
+  }
+
+  .brand small {
+    color: var(--faint);
+    font-weight: 400;
+    font-size: 11.5px;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    margin-left: 1px;
+  }
+
+  .grow { flex: 1; }
+
+  .chip {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    height: 34px;
+    padding: 0 13px;
+    border-radius: 9px;
+    background: var(--glass);
+    border: 1px solid var(--border);
+    font-size: 13px;
+    cursor: pointer;
+    transition: background .16s;
+  }
+
+  .chip:hover { background: var(--glass-hover); }
+
+  /* 用 button 当下拉的，要把浏览器默认样式抹掉 */
+  button.chip {
+    font-family: inherit;
+    font-size: 13px;
+    color: var(--text);
+    line-height: 1;
+  }
+
+  .chip .dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--ok);
+    box-shadow: 0 0 9px rgba(110,231,160,.8);
+  }
+
+  /* 退出登录 */
+  .chip.quit {
+    font-family: inherit;
+    font-size: 13px;
+    color: var(--faint);
+    background: transparent;
+    border-color: transparent;
+  }
+
+  .chip.quit:hover {
+    color: var(--danger);
+    background: rgba(255,125,125,.09);
+    border-color: rgba(255,125,125,.32);
+  }
+
+  /* ── 布局 ───────────────────────────────── */
+  .shell {
+    display: grid;
+    grid-template-columns: 212px 1fr;
+    min-height: calc(100vh - 62px);
+  }
+
+  aside {
+    padding: 20px 12px;
+    border-right: 1px solid var(--border-soft);
+    position: sticky;
+    top: 62px;
+    height: calc(100vh - 62px);
+    overflow-y: auto;
+  }
+
+  .nav-group-label {
+    font-size: 10.5px;
+    letter-spacing: 1.4px;
+    text-transform: uppercase;
+    color: var(--faint);
+    padding: 0 12px;
+    margin: 6px 0 8px;
+  }
+
+  .nav-item {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    height: 38px;
+    padding: 0 12px;
+    margin-bottom: 2px;
+    border-radius: 9px;
+    color: var(--dim);
+    font-size: 13.5px;
+    cursor: pointer;
+    user-select: none;
+    transition: background .14s, color .14s;
+  }
+
+  .nav-item:hover { background: var(--glass); color: var(--text); }
+
+  .nav-item.active {
+    background: var(--glass-strong);
+    color: var(--text);
+    font-weight: 500;
+  }
+
+  .nav-item.active::before {
+    content: "";
+    position: absolute;
+    left: 0; top: 9px; bottom: 9px;
+    width: 2px;
+    border-radius: 2px;
+    background: var(--accent);
+    box-shadow: 0 0 10px var(--accent-glow);
+  }
+
+  .nav-item .ico {
+    width: 17px;
+    text-align: center;
+    font-size: 13px;
+    opacity: .85;
+  }
+
+  main {
+    padding: 30px 34px 120px;
+    min-width: 0;
+    transition: padding-right .2s;
+  }
+
+  
+
+  /* ── 页面网格：自动铺满，不留大片空白 ───── */
+  .page { display: none; }
+
+  .page.active {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(430px, 1fr));
+    gap: 16px;
+    align-items: start;
+  }
+
+  /* grid 子项默认 min-width:auto，内容一宽就撑破并叠在一起 */
+  .page.active > .card {
+    min-width: 0;
+  }
+
+  .page.active > .page-head,
+  .page.active > .banner,
+  .page.active > .wide { grid-column: 1 / -1; }
+
+  /* 闲聊圈另起一排，并且做那一排的排头 */
+  #page-rings.active > .card.lead { grid-column: 1; }
+
+  /* 数据库页：顶部一排小格 + 并列卡等高 */
+  .db-stats {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 12px;
+    margin-top: 4px;
+  }
+  @media (max-width: 1180px) { .db-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+  @media (max-width: 720px)  { .db-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+  .db-stat {
+    padding: 14px 16px 13px;
+    border-radius: 10px;
+    background: rgba(255,255,255,.028);
+    border: 1px solid rgba(255,255,255,.055);
+    min-width: 0;
+  }
+  .db-stat-k {
+    font-size: 11px;
+    color: var(--faint);
+    letter-spacing: .4px;
+    margin-bottom: 7px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .db-stat-v {
+    font-size: 22px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -.3px;
+    line-height: 1.15;
+    color: #e8eefc;
+  }
+  .db-stat:first-child .db-stat-v { color: #ffd479; }
+  .db-stat-time { font-size: 15px; font-weight: 500; color: #c4cee4; }
+
+  #page-db.active > .card.same-h { align-self: stretch; display: flex; flex-direction: column; }
+
+  /* 库列表：三列并排后空间有限，限高滚动 */
+  /* 固定露两条，第 3 条起在框里滚 —— 布局高度就不跟着库数量变了 */
+  .db-list-scroll {
+    max-height: 119px;   /* 2 × 56 + 7 间距 */
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding-right: 8px;
+    flex: none;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255,255,255,.26) transparent;
+  }
+  .db-list-scroll::-webkit-scrollbar { width: 8px; }
+  .db-list-scroll::-webkit-scrollbar-track { background: transparent; }
+  .db-list-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,.22); border-radius: 4px; }
+  .db-list-scroll::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.38); }
+
+  /* 合成卡里的分隔区 */
+  .db-split {
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid rgba(255,255,255,.07);
+  }
+
+  /* 记忆更新：三张并排、等高 */
+  #page-task.active > .card { align-self: stretch; }
+  #page-task.active { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  @media (max-width: 1180px) {
+    #page-task.active { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @media (max-width: 780px) {
+    #page-task.active { grid-template-columns: minmax(0, 1fr); }
+  }
+
+  /* ── 模式页：选中那档的实际数值，用条不用表 ───────── */
+  .facts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
+    gap: 22px 26px;
+    margin-top: 4px;
+  }
+  .fact { min-width: 0; }
+  .fact-top {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 9px;
+  }
+  .fact-name { font-size: 12px; color: var(--dim); }
+  .fact-val {
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: .2px;
+    white-space: nowrap;
+  }
+  .fact-bar {
+    height: 5px;
+    border-radius: 3px;
+    background: rgba(255,255,255,.07);
+    overflow: hidden;
+  }
+  .fact-bar > i {
+    display: block;
+    height: 100%;
+    border-radius: 3px;
+    transition: width .35s cubic-bezier(.4,0,.2,1), background .25s;
+  }
+  .fact-note {
+    margin-top: 7px;
+    font-size: 11.5px;
+    color: var(--faint);
+    line-height: 1.5;
+  }
+
+  /* 系统推荐：左边选量，右边一行七格 */
+  .preset-bar {
+    display: flex;
+    align-items: center;
+    gap: 28px;
+    flex-wrap: wrap;
+  }
+  .preset-pick { flex: none; width: 250px; }
+  .preset-pick .field-hint { margin-bottom: 7px; }
+  .preset-pick select { width: 100%; }
+
+  #preset-info, #time-preset-info { flex: 1; min-width: 560px; color: inherit; }
+  .pi-grid {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+  }
+  .pi-cell {
+    min-width: 0;
+    text-align: center;
+    padding: 2px 4px;
+    border-left: 1px solid rgba(255,255,255,.055);
+  }
+  .pi-cell:first-child { border-left: none; }
+  .pi-cell > span {
+    display: block;
+    font-size: 11px;
+    color: var(--faint);
+    letter-spacing: .2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .pi-cell > b {
+    display: block;
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: .2px;
+    margin-top: 5px;
+    white-space: nowrap;
+  }
+  .pi-cell > i {
+    display: block;
+    font-style: normal;
+    font-size: 10.5px;
+    line-height: 1.5;
+    margin-top: 2px;
+    color: var(--faint);
+  }
+  .pi-cell.cap > b { color: #d8a13a; }
+  .pi-cell.cap > i { color: #b98b34; }
+
+  @media (max-width: 1180px) {
+    .pi-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); row-gap: 14px; }
+    .pi-cell:nth-child(4n + 1) { border-left: none; }
+  }
+  .pi-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    min-width: 0;
+  }
+  .pi-row > span:first-child { color: var(--dim); }
+  .pi-row > span:last-child { font-weight: 600; white-space: nowrap; }
+  .pi-row i { font-style: normal; color: var(--faint); margin-left: 4px; font-weight: 400; }
+
+  /* 网关细节里的小「改」按钮 */
+  .mini-edit {
+    margin-left: 10px; flex: none;
+    padding: 2px 9px; border-radius: 6px;
+    font-size: 11px; line-height: 1.7;
+    color: rgba(215,225,242,.8);
+    background: rgba(255,255,255,.06);
+    border: 1px solid rgba(255,255,255,.12);
+    cursor: pointer;
+    transition: background .15s, color .15s, border-color .15s;
+  }
+  .mini-edit:hover { background: rgba(143,179,255,.16); color: #dce6ff; border-color: rgba(143,179,255,.4); }
+
+  /* 下拉里的选项：默认太灰，深色底下看不清 */
+  select option, select optgroup { background: #12161f; color: rgba(232,238,250,.92); }
+  select optgroup { color: rgba(190,202,224,.62); font-style: normal; }
+  select option:disabled { color: rgba(150,160,180,.5); }
+
+  /* 容量横排 */
+  .ring-cap-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(116px,1fr)); gap:10px; }
+  .cap-cell { background:rgba(255,255,255,.035); border:1px solid rgba(255,255,255,.07); border-radius:11px; padding:11px 13px; }
+  .cap-cell.full { border-color:rgba(224,85,85,.45); background:rgba(224,85,85,.07); }
+  .cap-name { font-size:12px; color:var(--dim); }
+  .cap-num { margin-top:5px; font-variant-numeric:tabular-nums; }
+  .cap-num b { font-size:19px; font-weight:600; }
+  .cap-num span { font-size:11px; color:var(--faint); }
+  .cap-bar { height:3px; margin-top:8px; background:rgba(255,255,255,.08); border-radius:2px; overflow:hidden; }
+  .cap-bar i { display:block; height:100%; background:var(--c-core,#8fb3ff); border-radius:2px; }
+  .cap-cell.full .cap-bar i { background:var(--danger,#e05555); }
+  .cap-when { margin-top:7px; font-size:11px; color:var(--faint); }
+
+  /* 记忆圈页：每行卡片等高 */
+  #page-rings.active { align-items: stretch; }
+
+  /* 换存放位置：卡里展开的一块确认区 */
+  .move-panel {
+    margin-top: 14px;
+    padding: 13px 15px;
+    border-radius: 10px;
+    background: rgba(255,255,255,.035);
+    border: 1px solid rgba(255,255,255,.07);
+  }
+  .move-line {
+    display: flex;
+    gap: 10px;
+    font-size: 12px;
+    line-height: 1.8;
+  }
+  .move-line > span:first-child { color: var(--faint); flex: none; width: 46px; }
+  .move-line > span:last-child { min-width: 0; word-break: break-all; }
+  .move-warn {
+    margin-top: 9px;
+    font-size: 11.5px;
+    line-height: 1.7;
+    color: var(--faint);
+  }
+
+  /* 自定义模式那组滑块：两列排 */
+  .cfg-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 4px 34px;
+    margin-top: 2px;
+  }
+  .cfg-grid .field {
+    padding: 12px 0;
+    border-bottom: 1px solid rgba(255,255,255,.045);
+  }
+
+  /* 数据库页：三张窄卡并排，维护收在最右 */
+  #page-db.active { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  @media (max-width: 1180px) {
+    #page-db.active { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @media (max-width: 780px) {
+    #page-db.active { grid-template-columns: minmax(0, 1fr); }
+  }
+
+  /* ── 页头 ───────────────────────────────── */
+  .page-head { margin-bottom: 8px; }
+
+  .page-head h1 {
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: .2px;
+    margin-bottom: 3px;
+  }
+
+  .page-head p {
+    color: var(--dim);
+    font-size: 13px;
+  }
+
+  /* ── 卡片（毛玻璃）──────────────────────── */
+  .card {
+    background: var(--glass);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 20px 22px;
+    backdrop-filter: blur(18px) saturate(130%);
+    -webkit-backdrop-filter: blur(18px) saturate(130%);
+    box-shadow: 0 8px 32px rgba(0,0,0,.22);
+  }
+
+  .card-title {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 3px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .card-desc {
+    color: var(--dim);
+    font-size: 12.5px;
+    margin-bottom: 16px;
+    line-height: 1.6;
+  }
+
+  /* ── 概览 ───────────────────────────────── */
+  .overview {
+    display: grid;
+    grid-template-columns: minmax(260px, 380px) 1fr;
+    gap: 26px;
+    align-items: center;
+  }
+
+  .ring-svg { width: 100%; height: auto; display: block; }
+  .ring-svg circle { cursor: pointer; transition: opacity .15s; }
+  .ring-svg circle:hover { opacity: .8; }
+  .ring-svg text { font-size: 8.5px; font-family: inherit; pointer-events: none; }
+
+  .legend { display: flex; flex-direction: column; gap: 6px; }
+
+  .legend-row {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    padding: 9px 12px;
+    border-radius: 10px;
+    background: rgba(255,255,255,.028);
+    font-size: 12.5px;
+    transition: background .14s;
+  }
+
+  .legend-row:hover { background: var(--glass-hover); }
+
+  .swatch { width: 9px; height: 9px; border-radius: 3px; flex: none; }
+  .legend-row .name { flex: 1; color: var(--dim); }
+  .legend-row .num {
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+    font-size: 12px;
+  }
+
+  /* ── 字段行 ─────────────────────────────── */
+  .field {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(180px, 230px);
+    gap: 18px;
+    align-items: center;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border-soft);
+  }
+
+  .field:last-child { border-bottom: none; padding-bottom: 0; }
+  .field:first-of-type { padding-top: 0; }
+
+  .field-label { font-size: 13px; }
+  .field-hint { color: var(--faint); font-size: 11.5px; margin-top: 2px; }
+
+  /* ── 输入 ───────────────────────────────── */
+  input[type="number"], input[type="text"], input[type="time"], select {
+    width: 100%;
+    height: 34px;
+    background: rgba(255,255,255,.05);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text);
+    padding: 0 10px;
+    font-size: 13px;
+    font-family: inherit;
+    outline: none;
+    transition: border-color .14s, background .14s;
+  }
+
+  input:focus, select:focus {
+    border-color: rgba(127,176,255,.55);
+    background: rgba(127,176,255,.06);
+  }
+
+  select option { background: #101725; color: var(--text); }
+
+  /* ── 滑条 ───────────────────────────────── */
+  .slider-row {
+    display: grid;
+    grid-template-columns: 1fr 56px 12px;
+    gap: 9px;
+    align-items: center;
+  }
+
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 3px;
+    background: rgba(255,255,255,.12);
+    border-radius: 2px;
+    outline: none;
+    cursor: pointer;
+  }
+
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 13px; height: 13px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+    box-shadow: 0 0 0 4px rgba(127,176,255,.14), 0 0 12px rgba(127,176,255,.4);
+    transition: transform .12s;
+  }
+
+  input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.15); }
+
+  .num-input {
+    width: 100%;
+    height: 30px;
+    background: rgba(255,255,255,.05);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    color: var(--text);
+    padding: 0 8px;
+    font-size: 12.5px;
+    font-family: inherit;
+    text-align: right;
+    outline: none;
+    font-variant-numeric: tabular-nums;
+    -moz-appearance: textfield;
+  }
+
+  .num-input::-webkit-outer-spin-button,
+  .num-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+  .num-input:focus { border-color: rgba(127,176,255,.55); background: rgba(127,176,255,.06); }
+
+  .unit { color: var(--faint); font-size: 11.5px; }
+
+  /* ── 开关 ───────────────────────────────── */
+  .switch {
+    position: relative;
+    width: 38px; height: 21px;
+    border-radius: 11px;
+    background: rgba(255,255,255,.12);
+    cursor: pointer;
+    transition: background .2s;
+    justify-self: end;
+    flex: none;
+  }
+
+  .switch::after {
+    content: "";
+    position: absolute;
+    top: 3px; left: 3px;
+    width: 15px; height: 15px;
+    border-radius: 50%;
+    background: rgba(255,255,255,.65);
+    transition: transform .2s, background .2s;
+  }
+
+  .switch.on { background: rgba(127,176,255,.75); }
+  .switch.on::after { transform: translateX(17px); background: #fff; }
+  .switch.disabled {
+    opacity: .32;
+    cursor: not-allowed;
+    filter: grayscale(1);
+  }
+
+  /* ── 模式卡片 ───────────────────────────── */
+  .modes {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    gap: 12px;
+  }
+
+  .mode {
+    position: relative;
+    padding: 16px 18px;
+    border-radius: 12px;
+    background: rgba(255,255,255,.035);
+    border: 1px solid var(--border);
+    cursor: pointer;
+    transition: background .16s, border-color .16s, transform .16s;
+  }
+
+  .mode:hover { background: rgba(255,255,255,.06); transform: translateY(-1px); }
+
+  .mode.active {
+    border-color: rgba(127,176,255,.55);
+    background: rgba(127,176,255,.10);
+    box-shadow: 0 0 0 1px rgba(127,176,255,.12), 0 6px 24px rgba(127,176,255,.10);
+  }
+
+  .mode .check {
+    position: absolute;
+    top: 14px; right: 15px;
+    width: 16px; height: 16px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    display: grid;
+    place-items: center;
+    font-size: 9px;
+    color: transparent;
+    transition: all .16s;
+  }
+
+  .mode.active .check {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #071120;
+    font-weight: 800;
+  }
+
+  .mode-name { font-size: 13.5px; font-weight: 600; margin-bottom: 4px; padding-right: 24px; }
+  .mode-desc { color: var(--dim); font-size: 12px; line-height: 1.55; }
+
+  /* ── 提示条 ─────────────────────────────── */
+  .banner {
+    display: flex;
+    gap: 11px;
+    padding: 13px 16px;
+    border-radius: 12px;
+    font-size: 12.5px;
+    line-height: 1.65;
+    border: 1px solid;
+    margin-bottom: 4px;
+  }
+
+  .banner.info {
+    background: rgba(127,176,255,.07);
+    border-color: rgba(127,176,255,.20);
+    color: #b9d3ff;
+  }
+
+  .banner.warn {
+    background: rgba(255,192,107,.07);
+    border-color: rgba(255,192,107,.20);
+    color: #ffd9a3;
+  }
+
+  .banner .bico { flex: none; opacity: .8; }
+
+  /* ── 表格 ───────────────────────────────── */
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+
+  th {
+    text-align: left;
+    color: var(--faint);
+    font-weight: 500;
+    font-size: 11px;
+    letter-spacing: .6px;
+    text-transform: uppercase;
+    padding: 0 10px 9px;
+    border-bottom: 1px solid var(--border-soft);
+    white-space: nowrap;
+  }
+
+  td {
+    padding: 11px 10px;
+    border-bottom: 1px solid rgba(255,255,255,.035);
+    vertical-align: middle;
+  }
+
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(255,255,255,.02); }
+
+  td.num, th.num { font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+
+  /* 「按会话」和「价目表」并排：等高，行多了在卡片内部滚动 */
+  #page-token.active > .card.same-h { align-self: stretch; display: flex; flex-direction: column; }
+  #page-token .card.same-h .scroll-box {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: 288px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    margin-right: -6px;
+    padding-right: 6px;
+  }
+  #page-token .card.same-h .scroll-box::-webkit-scrollbar { width: 7px; }
+  #page-token .card.same-h .scroll-box::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,.14); border-radius: 4px;
+  }
+  /* 滚动时表头钉住 */
+  #page-token .card.same-h .scroll-box table thead th { position: sticky; top: 0; z-index: 2;
+    background: linear-gradient(180deg, #0b1120, #0a0f1c); }
+
+  /* Token 页的时间范围按钮 */
+  .token-range {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 7px;
+    margin: 2px 0 12px;
+  }
+  .token-range .range-label {
+    font-size: 11px;
+    letter-spacing: .5px;
+    color: var(--faint);
+    margin-right: 2px;
+  }
+  .token-range .tag {
+    font: inherit;
+    font-size: 12px;
+    padding: 5px 11px;
+    border-radius: 7px;
+    border: 1px solid rgba(255,255,255,.10);
+    background: rgba(255,255,255,.03);
+    color: rgba(200,210,230,.72);
+    cursor: pointer;
+    transition: all .14s;
+    line-height: 1.2;
+  }
+  .token-range .tag:hover { background: rgba(255,255,255,.07); color: #dbe3f5; }
+  .token-range .tag.active {
+    background: rgba(127,176,255,.16);
+    border-color: rgba(127,176,255,.45);
+    color: #cfe0ff;
+  }
+  .token-range .range-note { font-size: 11px; color: var(--faint); margin-left: 4px; }
+
+  /* Token 页的消耗走势：纯 SVG 柱状图 */
+  .token-chart { width: 100%; height: 200px; }
+  .token-chart svg { width: 100%; height: 100%; display: block; }
+  .token-chart .bar { fill: rgba(127,176,255,.55); transition: fill .15s; }
+  .token-chart .bar:hover { fill: rgba(127,176,255,.95); }
+  .token-chart .bar.mid { fill: rgba(255,192,107,.6); }
+  .token-chart .bar.mid:hover { fill: rgba(255,192,107,.95); }
+  .token-chart .bar.hi { fill: rgba(255,125,125,.65); }
+  .token-chart .bar.hi:hover { fill: rgba(255,125,125,.95); }
+  .token-chart .axis { stroke: rgba(255,255,255,.12); stroke-width: 1; }
+  .token-chart .lbl { fill: rgba(200,210,230,.55); font-size: 9px; }
+  .token-chart .val { fill: rgba(255,255,255,.7); font-size: 9px; }
+
+  /* Token 页的表格：数字列收窄，别把第一列挤成一条 */
+  #page-token table th.num, #page-token table td.num { width: 1%; }
+  #page-token table th:first-child, #page-token table td:first-child { width: auto; min-width: 140px; }
+
+  /* 概览那两张表：给宽一点，别让长数字挤成两行 */
+  .page.active > .card.roomy {
+    min-width: min(520px, 100%);
+    align-self: stretch; /* 并排两张等高，不然一高一矮很难看 */
+  }
+
+  /* ── 连接状态 ───────────────────────────── */
+  .health-hero {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    padding: 20px 24px;
+    background:
+      radial-gradient(ellipse 46% 130% at 0% 50%, rgba(110,231,160,.075), transparent 70%),
+      rgba(255,255,255,.045);
+  }
+
+  .hero-dot {
+    width: 17px; height: 17px;
+    border-radius: 50%;
+    flex: none;
+    background: #6ee7a0;
+    box-shadow: 0 0 0 6px rgba(110,231,160,.20), 0 0 28px rgba(110,231,160,.85);
+    transition: background .25s, box-shadow .25s;
+  }
+  .hero-dot.warn { background: #ffc06b; box-shadow: 0 0 0 6px rgba(255,192,107,.20), 0 0 28px rgba(255,192,107,.85); }
+  .hero-dot.bad  { background: #ff7d7d; box-shadow: 0 0 0 6px rgba(255,125,125,.20), 0 0 28px rgba(255,125,125,.85); }
+
+  .hero-body { flex: 1; min-width: 0; }
+  .hero-title { font-size: 17px; font-weight: 600; letter-spacing: .2px; }
+  .hero-sub { color: var(--dim); font-size: 12.5px; margin-top: 3px; }
+
+  /* 横条右半边：四个小读数，把空出来的地方填满 */
+  .hero-facts {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    flex: none;
+  }
+  .hero-fact {
+    padding: 0 16px;
+    border-left: 1px solid rgba(255,255,255,.07);
+    text-align: right;
+    white-space: nowrap;
+  }
+  .hero-fact:first-child { border-left: none; }
+  .hero-fact b {
+    display: block;
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: .2px;
+  }
+  .hero-fact span {
+    display: block;
+    font-size: 11px;
+    color: var(--faint);
+    margin-top: 1px;
+  }
+
+  .stat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: 12px;
+  }
+
+  /* Token 页是整宽内容：工具条和指标区都占满一行，别跟卡片挤成两列 */
+  #page-token.active > .btn-row,
+  #page-token.active > #token-metrics { grid-column: 1 / -1; }
+
+  /* Token 页那四个：固定一排四个，窗口窄了退成两排 */
+  #token-metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+  @media (max-width: 1080px) {
+    #token-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @media (max-width: 620px) {
+    #token-metrics { grid-template-columns: 1fr; }
+  }
+
+  /* 数字再大一号，等宽，好扫 */
+  #token-metrics .stat { padding: 20px 22px 18px; }
+  #token-metrics .stat-main {
+    font-size: 27px;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -.4px;
+    line-height: 1.15;
+  }
+  #token-metrics .stat-sub { margin-top: 5px; }
+  /* 总花费那张给点分量 */
+  #token-metrics .stat:first-child .stat-main { color: #ffd479; }
+
+  .stat {
+    padding: 18px 20px 17px;
+    border-radius: 14px;
+    background: linear-gradient(168deg, rgba(10,14,22,.92), rgba(6,9,15,.96));
+    border: 1px solid rgba(255,255,255,.16);
+    box-shadow: 0 2px 10px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.05);
+    transition: border-color .2s, background .2s, box-shadow .2s;
+    min-width: 0;
+  }
+  .stat.ok   { border-color: rgba(110,231,160,.55); background: linear-gradient(168deg, rgba(12,26,19,.95), rgba(7,14,11,.97)); box-shadow: 0 2px 12px rgba(0,0,0,.4), inset 0 1px 0 rgba(110,231,160,.12); }
+  .stat.warn { border-color: rgba(255,192,107,.5); background: linear-gradient(168deg, rgba(28,22,10,.95), rgba(14,11,6,.97)); box-shadow: 0 2px 12px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,192,107,.12); }
+  .stat.bad  { border-color: rgba(255,125,125,.5); background: linear-gradient(168deg, rgba(28,12,12,.95), rgba(15,7,7,.97)); box-shadow: 0 2px 12px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,125,125,.12); }
+
+  .stat-head { display: flex; align-items: center; gap: 8px; margin-bottom: 11px; }
+
+  .stat-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    flex: none;
+    background: rgba(255,255,255,.22);
+    transition: background .25s, box-shadow .25s;
+  }
+  .stat.ok   .stat-dot { background: #6ee7a0; box-shadow: 0 0 8px rgba(110,231,160,.85); }
+  .stat.warn .stat-dot { background: #ffc06b; box-shadow: 0 0 8px rgba(255,192,107,.85); }
+  .stat.bad  .stat-dot { background: #ff7d7d; box-shadow: 0 0 8px rgba(255,125,125,.85); }
+
+  .stat-label { font-size: 11.5px; color: rgba(225,232,245,.72); letter-spacing: .3px; font-weight: 500; }
+
+  .stat-main {
+    font-size: 21px;
+    font-weight: 600;
+    letter-spacing: .3px;
+    line-height: 1.3;
+    margin-bottom: 5px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .stat-sub {
+    color: rgba(190,200,218,.5);
+    font-size: 11px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* 网关细节：两列排，省一半高度 */
+  .meta-rows {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 0 30px;
+  }
+  .meta-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 9px 0;
+    border-bottom: 1px solid rgba(255,255,255,.04);
+    font-size: 12.5px;
+  }
+  /* 每列最后一行别留线 */
+  .meta-row:nth-last-child(-n + 2) { border-bottom: none; }
+  .meta-k { color: var(--dim); flex: none; }
+  .meta-v {
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: right;
+  }
+
+  /* 折叠的设置 */
+  .setup summary {
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--dim);
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    user-select: none;
+  }
+  .setup summary::-webkit-details-marker { display: none; }
+  .setup summary::before {
+    content: "▸";
+    font-size: 10px;
+    transition: transform .15s;
+    color: var(--faint);
+  }
+  .setup[open] summary::before { transform: rotate(90deg); }
+  .setup summary:hover { color: var(--text); }
+  .setup-body { margin-top: 16px; }
+
+  /* 其他服务：一行一个，不带表格线 */
+  .others { display: flex; flex-direction: column; gap: 2px; }
+  .other-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 9px 0;
+    border-bottom: 1px solid rgba(255,255,255,.04);
+    font-size: 12.5px;
+  }
+  .other-row:last-child { border-bottom: none; }
+  .other-name { color: var(--dim); }
+  td.label { color: var(--dim); }
+
+  /* ── 标签 ───────────────────────────────── */
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    height: 23px;
+    padding: 0 11px;
+    border-radius: 20px;
+    font-size: 11.5px;
+    line-height: 1;
+    background: rgba(255,255,255,.06);
+    border: 1px solid var(--border);
+    color: var(--dim);
+    white-space: nowrap;
+    flex: none;
+  }
+
+  .pill.ok   { color: #a8f0c6; border-color: rgba(110,231,160,.28); background: rgba(110,231,160,.08); }
+  .pill.warn { color: #ffd9a3; border-color: rgba(255,192,107,.28); background: rgba(255,192,107,.08); }
+
+  .nowrap { white-space: nowrap; }
+
+  /* 只读（系统模板）时的输入框：看得见，改不动 */
+  input:disabled, select:disabled, input[readonly] {
+    opacity: .42;
+    cursor: not-allowed;
+    filter: saturate(.5);
+  }
+
+  /* 锁死的输入框再压一层底色，一眼就能看出"这块不归你改" */
+  input[readonly] {
+    background: rgba(255,255,255,.015) !important;
+    border-style: dashed;
+    border-color: rgba(255,255,255,.10);
+    color: rgba(150,160,180,.75);
+  }
+  input[readonly]:focus {
+    background: rgba(255,255,255,.015) !important;
+    border-color: rgba(255,255,255,.10);
+  }
+
+  /* 锁死的滑条：整条变灰，手柄不给拖 */
+  input[type="range"][disabled] { opacity: .35; cursor: not-allowed; }
+  input[type="range"][disabled]::-webkit-slider-thumb { cursor: not-allowed; }
+
+  /* ── 库列表 ───────────────────────────────── */
+  .db-list { display: flex; flex-direction: column; gap: 7px; }
+  .db-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 11px; border-radius: 9px;
+    border: 1px solid var(--border);
+    background: rgba(255,255,255,.03);
+    height: 56px;
+    box-sizing: border-box;
+  }
+  .db-row > div:first-child { min-width: 0; overflow: hidden; }
+  .db-row.cur { border-color: rgba(110,231,160,.3); background: rgba(110,231,160,.06); }
+  .db-row .db-n { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+  .db-row .db-m { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .db-row .db-m { color: var(--faint); font-size: 12px; white-space: nowrap; }
+  .db-del {
+    flex: none; font-family: inherit; font-size: 11.5px;
+    padding: 5px 10px; border-radius: 7px; cursor: pointer;
+    border: 1px solid rgba(255,110,110,.26);
+    background: rgba(255,110,110,.07);
+    color: rgba(255,158,158,.92);
+    transition: background .14s, border-color .14s;
+  }
+  .db-del:hover { background: rgba(255,110,110,.15); border-color: rgba(255,110,110,.42); }
+  .db-del:disabled { opacity: .45; cursor: not-allowed; }
+  /* ── 左下角更新框 ────────────────────────── */
+  .updater {
+    position: fixed;
+    left: 20px;
+    bottom: 20px;
+    z-index: 300;
+    width: 310px;
+    max-width: calc(100vw - 40px);
+    padding: 13px 15px 14px;
+    border-radius: 12px;
+    border: 1px solid rgba(127,176,255,.32);
+    background: linear-gradient(180deg, rgba(30,40,62,.97), rgba(20,27,42,.97));
+    box-shadow: 0 12px 34px rgba(0,0,0,.45), 0 0 0 1px rgba(255,255,255,.03) inset;
+    backdrop-filter: blur(10px);
+    animation: updater-in .26s cubic-bezier(.22,1,.36,1);
+  }
+  @keyframes updater-in {
+    from { opacity: 0; transform: translateY(10px) scale(.97); }
+    to   { opacity: 1; transform: none; }
+  }
+  .updater-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 7px;
+  }
+  .updater-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #7fb0ff;
+    box-shadow: 0 0 0 3px rgba(127,176,255,.18);
+    flex: none;
+    animation: updater-pulse 2s ease-in-out infinite;
+  }
+  @keyframes updater-pulse {
+    0%, 100% { box-shadow: 0 0 0 3px rgba(127,176,255,.18); }
+    50%      { box-shadow: 0 0 0 6px rgba(127,176,255,.06); }
+  }
+  .updater-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #dce8ff;
+    letter-spacing: .2px;
+  }
+  .updater-body {
+    font-size: 12px;
+    line-height: 1.55;
+    color: rgba(190,202,224,.82);
+    margin-bottom: 11px;
+    word-break: break-word;
+  }
+  .updater-body b { color: #ffd479; font-weight: 600; }
+  .updater-btns { display: flex; gap: 8px; }
+  .updater-btns .btn { flex: 1; padding: 7px 10px; font-size: 12.5px; }
+  .updater.busy .updater-dot { animation: none; background: #ffd479; box-shadow: 0 0 0 3px rgba(255,212,121,.18); }
+  .updater.done .updater-dot { animation: none; background: #6ee7a0; box-shadow: 0 0 0 3px rgba(110,231,160,.18); }
+
+  /* ── 弹窗 ─────────────────────────────────── */
+  .modal-mask {
+    position: fixed; inset: 0; z-index: 400;
+    background: rgba(6, 8, 12, .62);
+    display: flex; align-items: center; justify-content: center;
+    padding: 22px;
+  }
+  .modal-mask[hidden] { display: none; }
+  .modal {
+    width: 100%; max-width: 430px;
+    border-radius: 15px;
+    border: 1px solid rgba(255,255,255,.13);
+    background: linear-gradient(180deg, rgba(34,37,46,.98), rgba(24,26,33,.98));
+    box-shadow: 0 26px 70px rgba(0,0,0,.55);
+    padding: 20px 20px 17px;
+  }
+  .modal-title { font-size: 15px; font-weight: 650; margin-bottom: 9px; letter-spacing: .2px; }
+  .modal-body { font-size: 13px; line-height: 1.75; color: var(--dim); white-space: pre-wrap; word-break: break-word; }
+  .modal-btns { display: flex; justify-content: flex-end; gap: 9px; margin-top: 19px; }
+  .modal-btns .btn[hidden] { display: none; }
+  .muted { color: var(--faint); font-size: 12px; }
+
+  /* ── 按钮 ───────────────────────────────── */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    height: 34px;
+    padding: 0 15px;
+    border-radius: 9px;
+    border: 1px solid var(--border);
+    background: rgba(255,255,255,.05);
+    color: var(--text);
+    font-size: 13px;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background .14s, border-color .14s, transform .1s;
+    white-space: nowrap;
+  }
+
+  .btn:hover { background: rgba(255,255,255,.09); border-color: rgba(255,255,255,.14); }
+  .btn:active { transform: scale(.98); }
+
+  .btn.primary {
+    background: linear-gradient(180deg, #7fb0ff, #5b93e8);
+    border-color: transparent;
+    color: #06101f;
+    font-weight: 600;
+    box-shadow: 0 4px 16px rgba(90,147,232,.28);
+  }
+
+  .btn.primary:hover { background: linear-gradient(180deg, #8fbaff, #6a9ff0); }
+
+  .btn.ghost { background: transparent; }
+
+  .btn.danger { color: var(--danger); border-color: rgba(255,125,125,.3); }
+  .btn.danger:hover { background: rgba(255,125,125,.08); }
+
+  .btn-row { display: flex; gap: 9px; flex-wrap: wrap; }
+
+  /* ── 右下角保存 ─────────────────────────── */
+  .savebar {
+    position: fixed;
+    right: 26px;
+    bottom: 24px;
+    z-index: 30;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 10px;
+    border-radius: 14px;
+    background: rgba(14,20,32,.72);
+    backdrop-filter: blur(24px) saturate(140%);
+    -webkit-backdrop-filter: blur(24px) saturate(140%);
+    border: 1px solid var(--border);
+    box-shadow: 0 12px 44px rgba(0,0,0,.55);
+  }
+
+  .savebar .status {
+    font-size: 11.5px;
+    color: var(--faint);
+    padding: 0 8px;
+    white-space: nowrap;
+  }
+
+  .savebar .status.dirty { color: var(--warn); }
+
+  /* ── 响应式 ─────────────────────────────── */
+  @media (max-width: 900px) {
+    .shell { grid-template-columns: 1fr; }
+    aside {
+      position: static;
+      height: auto;
+      display: flex;
+      gap: 6px;
+      overflow-x: auto;
+      padding: 10px 14px;
+      border-right: none;
+      border-bottom: 1px solid var(--border-soft);
+    }
+    .nav-group-label { display: none; }
+    .nav-item { white-space: nowrap; margin-bottom: 0; }
+    .nav-item.active::before { display: none; }
+    main { padding: 20px 16px 110px; }
+    .page.active { grid-template-columns: 1fr; }
+    .overview { grid-template-columns: 1fr; }
+    .field { grid-template-columns: 1fr; gap: 7px; }
+    .savebar { right: 12px; bottom: 12px; }
+    .savebar .status { display: none; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; }
+  }
+
+  ::-webkit-scrollbar { width: 9px; height: 9px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,.10);
+    border-radius: 5px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.18); background-clip: content-box; }
+</style>
+</head>
+<body>
+
+<div class="bg"></div>
+<div class="bg-veil"></div>
+
+<header>
+  <div class="brand">
+    <div class="brand-mark"></div>
+    环形的心
+    <small>Ringmind v1.0.1</small>
+  </div>
+  <div class="grow"></div>
+  <button class="chip" id="cur-db" type="button" title="打开数据库页看库文件和存放位置">
+    <span class="dot"></span>
+    <span id="cur-db-name">当前库</span>
+  </button>
+  <button class="chip quit" id="quit" type="button" title="退出登录，回到登录页">退出</button>
+</header>
+
+<div class="shell">
+  <aside>
+    <div class="nav-group-label">主页</div>
+    <div class="nav-item active" data-page="overview"><span class="ico">◎</span>概览</div>
+    <div class="nav-item" data-page="browse"><span class="ico">☰</span>记忆浏览</div>
+    <div class="nav-item" data-page="health"><span class="ico">◉</span>连接状态</div>
+
+    <div class="nav-group-label" style="margin-top:16px">记忆设置</div>
+    <div class="nav-item" data-page="mode"><span class="ico">◈</span>记忆模式</div>
+    <div class="nav-item" data-page="rings"><span class="ico">⧉</span>记忆容量</div>
+    <div class="nav-item" data-page="time"><span class="ico">◷</span>记忆时间</div>
+    <div class="nav-item" data-page="task"><span class="ico">⟳</span>记忆更新</div>
+
+    <div class="nav-group-label" style="margin-top:16px">其他</div>
+    <div class="nav-item" data-page="db"><span class="ico">⛁</span>数据库</div>
+    <div class="nav-item" data-page="token"><span class="ico">¥</span>Token 消耗</div>
+  </aside>
+
+  <main>
+
+    <!-- ══════ 概览 ══════ -->
+    <section class="page active" id="page-overview">
+      <div class="page-head">
+        <h1>概览</h1>
+        <p>记得什么、忘了什么，一眼看到。</p>
+      </div>
+
+      <div class="banner info wide" id="demo-banner">
+        <span class="bico">ℹ</span>
+        <span id="demo-text">正在读记忆库…</span>
+      </div>
+
+      <div class="card wide">
+        <div class="overview">
+          <svg class="ring-svg" viewBox="0 0 320 320">
+            <circle cx="160" cy="160" r="152" fill="none" stroke="rgba(255,255,255,.10)" stroke-width="1" stroke-dasharray="3 5"/>
+            <circle cx="160" cy="160" r="140" fill="var(--c-recall)" opacity=".55" data-ring="recall"/>
+            <circle cx="160" cy="160" r="116" fill="var(--c-r5)" opacity=".68" data-ring="ring5"/>
+            <circle cx="160" cy="160" r="92"  fill="var(--c-r4)" opacity=".76" data-ring="ring4"/>
+            <circle cx="160" cy="160" r="68"  fill="var(--c-r3)" opacity=".84" data-ring="ring3"/>
+            <circle cx="160" cy="160" r="50"  fill="var(--c-r2)" opacity=".90" data-ring="ring2"/>
+            <circle cx="160" cy="160" r="34"  fill="var(--c-r1)" opacity=".95" data-ring="ring1"/>
+            <circle cx="160" cy="160" r="18"  fill="var(--c-core)" data-ring="core"/>
+            <text x="160" y="163" text-anchor="middle" style="fill:#3a2b00;font-weight:700;font-size:8.5px">圆心</text>
+            <text x="160" y="143" text-anchor="middle" style="fill:#3a1200">一圈</text>
+            <text x="160" y="120" text-anchor="middle" style="fill:#4a0020">二圈</text>
+            <text x="160" y="101" text-anchor="middle" style="fill:#1a0040">三圈</text>
+            <text x="160" y="77"  text-anchor="middle" style="fill:#001a44">闲聊</text>
+            <text x="160" y="53"  text-anchor="middle" style="fill:#e3ecff">模糊</text>
+            <text x="160" y="29"  text-anchor="middle" style="fill:#8ba4c9">回忆圈</text>
+            <text x="160" y="13"  text-anchor="middle" style="fill:#5a6d8c;font-size:7px">— 总库 —</text>
+          </svg>
+
+          <div class="legend">
+            <div class="legend-row" data-ring="core"><span class="swatch" style="background:var(--c-core)"></span><span class="name">圆心 · 自我圈</span><span class="num">—</span></div>
+            <div class="legend-row" data-ring="ring1"><span class="swatch" style="background:var(--c-r1)"></span><span class="name">一圈 · 极其强烈</span><span class="num">—</span></div>
+            <div class="legend-row" data-ring="ring2"><span class="swatch" style="background:var(--c-r2)"></span><span class="name">二圈 · 很开心 / 很难过</span><span class="num">—</span></div>
+            <div class="legend-row" data-ring="ring3"><span class="swatch" style="background:var(--c-r3)"></span><span class="name">三圈 · 有点意思</span><span class="num">—</span></div>
+            <div class="legend-row" data-ring="ring4"><span class="swatch" style="background:var(--c-r4)"></span><span class="name">四圈 · 闲聊圈</span><span class="num">—</span></div>
+            <div class="legend-row" data-ring="ring5"><span class="swatch" style="background:var(--c-r5)"></span><span class="name">五圈 · 模糊圈</span><span class="num">—</span></div>
+            <div class="legend-row" data-ring="recall"><span class="swatch" style="background:var(--c-recall)"></span><span class="name">回忆圈</span><span class="num">—</span></div>
+            <div class="legend-row" data-ring="vault"><span class="swatch" style="background:rgba(255,255,255,.18)"></span><span class="name">数据总库</span><span class="num">—</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card roomy">
+        <div class="card-title">今天</div>
+        <div class="card-desc">最近发生了什么。</div>
+        <table>
+          <tr><td class="label">当前模式</td><td><span class="pill ok" id="s-mode">—</span></td></tr>
+          <tr><td class="label">今天新记住</td><td class="num" id="s-remembered">—</td></tr>
+          <tr><td class="label">今天忘掉</td><td class="num" id="s-forgotten">—</td></tr>
+          <tr><td class="label">主动钉住</td><td class="num" id="s-pinned">—</td></tr>
+          <tr><td class="label">下次整理</td><td id="s-next">—</td></tr>
+        </table>
+      </div>
+
+      <div class="card roomy">
+        <div class="card-title">最近记下的</div>
+        <div class="card-desc">按记下的时间排，最新的在上面。</div>
+        <table id="recent-table">
+          <tr><th>记下的</th><th>在哪</th><th style="text-align:right">记于</th></tr>
+        </table>
+      </div>
+    </section>
+
+    <!-- ══════ 记忆圈 ══════ -->
+    <section class="page" id="page-rings">
+      <div class="page-head">
+        <h1>记忆容量</h1>
+        <p>每一圈最多装多少条。装满了会挤掉旧的那条。</p>
+      </div>
+
+      <div class="banner warn wide">
+        <span class="bico">⚠</span>
+        <span><b>容量</b>和<b>时间</b>是两道闸门，谁先到算谁。装满了会挤掉旧的，时间到了会掉下去。时间在「记忆时间」里调。</span>
+      </div>
+
+      <div class="card wide">
+        <div class="card-title">系统推荐</div>
+        <div class="card-desc">三套是固定模板，只能选、不能改。想按自己的来，就「新建一个自己的方案」——建的时候拿当前这套做底稿，之后随便改。</div>
+        <div class="preset-bar">
+          <div class="preset-pick">
+            <div class="field-hint">使用方案</div>
+            <select id="preset-select"></select>
+          </div>
+          <div id="preset-info">—</div>
+        </div>
+        <div class="btn-row" style="margin-top:13px">
+          <button class="btn primary" id="preset-new" type="button">新建自己的方案</button>
+          <button class="btn" id="preset-rename" type="button" hidden>改名</button>
+          <button class="btn danger" id="preset-del" type="button" hidden>删掉这个</button>
+        </div>
+        <div class="field-hint" id="preset-lock-hint" style="margin-top:10px">—</div>
+      </div>
+
+      <div class="card" data-ring="core">
+        <div class="card-title">圆心 · 自我圈</div>
+        <div class="card-desc">钉住的秘密、底线和承诺。永不外出。</div>
+        <div class="field">
+          <div><div class="field-label">条数上限</div><div class="field-hint">钉满了要挤掉旧的，必须挑</div></div>
+          <input type="number" value="150">
+        </div>
+      </div>
+
+      <div class="card" data-ring="ring1">
+        <div class="card-title">一圈 · 极其强烈</div>
+        <div class="card-desc">想起来还会心里一动的事。</div>
+        <div class="field">
+          <div><div class="field-label">条数上限</div></div>
+          <input type="number" value="100">
+        </div>
+      </div>
+
+      <div class="card" data-ring="ring2">
+        <div class="card-title">二圈 · 很开心 / 很难过</div>
+        <div class="card-desc">情绪很浓的事。</div>
+        <div class="field">
+          <div><div class="field-label">条数上限</div></div>
+          <input type="number" value="200">
+        </div>
+      </div>
+
+      <div class="card" data-ring="ring3">
+        <div class="card-title">三圈 · 有点意思</div>
+        <div class="card-desc">还记得、值得留着的事。</div>
+        <div class="field">
+          <div><div class="field-label">条数上限</div></div>
+          <input type="number" value="300">
+        </div>
+      </div>
+
+      <div class="card" data-ring="ring4">
+        <div class="card-title">四圈 · 闲聊圈</div>
+        <div class="card-desc">近几天的日常。掉下来就再也回不去原来的圈。</div>
+        <div class="field">
+          <div><div class="field-label">条数上限</div></div>
+          <input type="number" value="400">
+        </div>
+      </div>
+
+      <div class="card" data-ring="ring5">
+        <div class="card-title">五圈 · 模糊圈</div>
+        <div class="card-desc">开始糊了。能猜，但说不清。</div>
+        <div class="field">
+          <div><div class="field-label">条数上限</div></div>
+          <input type="number" value="800">
+        </div>
+      </div>
+
+      <div class="card" data-ring="recall">
+        <div class="card-title">回忆圈</div>
+        <div class="card-desc">只剩零星的点。待满这个时间就彻底忘掉。</div>
+        <div class="field">
+          <div><div class="field-label">条数上限</div></div>
+          <input type="number" value="1000">
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════ 记忆时间 ══════ -->
+    <section class="page" id="page-time">
+      <div class="page-head">
+        <h1>记忆时间</h1>
+        <p>每一圈待多久。待满就掉到下一圈，回忆圈待满就彻底忘掉。</p>
+      </div>
+
+      <div class="banner warn wide">
+        <span class="bico">⚠</span>
+        <span>时间是硬闸门：到点就往下掉，不管装没装满。</span>
+      </div>
+
+      <div class="card wide">
+        <div class="card-title">系统推荐</div>
+        <div class="card-desc">系统只给一套「默认方案」，只能看不能改。想按自己的来，就点「新建自己的方案」——拿当前这套做底稿，之后随便改。</div>
+        <div class="preset-bar">
+          <div class="preset-pick">
+            <div class="field-hint">使用方案</div>
+            <select id="time-preset-select"></select>
+          </div>
+          <div id="time-preset-info">—</div>
+        </div>
+        <div class="btn-row" style="margin-top:13px">
+          <button class="btn primary" id="time-preset-new" type="button">新建自己的方案</button>
+          <button class="btn" id="time-preset-rename" type="button" hidden>改名</button>
+          <button class="btn danger" id="time-preset-del" type="button" hidden>删掉这个</button>
+        </div>
+        <div class="field-hint" id="time-preset-lock-hint" style="margin-top:10px">—</div>
+      </div>
+
+      <div class="card" data-ring="core">
+        <div class="card-title">圆心 · 自我圈</div>
+        <div class="card-desc">钉住的秘密、底线和承诺。永不外出。</div>
+        <div class="field">
+          <div><div class="field-label">停留时间</div><div class="field-hint">永不外出</div></div>
+          <span class="pill" style="align-self:center">∞</span>
+        </div>
+      </div>
+
+      <div class="card" data-ring="ring1">
+        <div class="card-title">一圈 · 极其强烈</div>
+        <div class="card-desc">想起来还会心里一动的事。</div>
+        <div class="field">
+          <div><div class="field-label">停留时间（天）</div><div class="field-hint">超过就掉到二圈</div></div>
+          <input type="number" value="90">
+        </div>
+      </div>
+
+      <div class="card" data-ring="ring2">
+        <div class="card-title">二圈 · 很开心 / 很难过</div>
+        <div class="card-desc">情绪很浓的事。</div>
+        <div class="field">
+          <div><div class="field-label">停留时间（天）</div><div class="field-hint">超过就掉到三圈</div></div>
+          <input type="number" value="30">
+        </div>
+      </div>
+
+      <div class="card" data-ring="ring3">
+        <div class="card-title">三圈 · 有点意思</div>
+        <div class="card-desc">还记得、值得留着的事。</div>
+        <div class="field">
+          <div><div class="field-label">停留时间（天）</div><div class="field-hint">超过就掉到闲聊圈</div></div>
+          <input type="number" value="10">
+        </div>
+      </div>
+
+      <div class="card" data-ring="ring4">
+        <div class="card-title">四圈 · 闲聊圈</div>
+        <div class="card-desc">近几天的日常。掉下来就再也回不去原来的圈。</div>
+        <div class="field">
+          <div><div class="field-label">停留时间（天）</div><div class="field-hint">超过就掉到模糊圈</div></div>
+          <input type="number" value="5">
+        </div>
+      </div>
+
+      <div class="card" data-ring="ring5">
+        <div class="card-title">五圈 · 模糊圈</div>
+        <div class="card-desc">开始糊了。能猜，但说不清。</div>
+        <div class="field">
+          <div><div class="field-label">停留时间（天）</div><div class="field-hint">超过就掉到回忆圈</div></div>
+          <input type="number" value="30">
+        </div>
+      </div>
+
+      <div class="card" data-ring="recall">
+        <div class="card-title">回忆圈</div>
+        <div class="card-desc">只剩零星的点。待满这个时间就彻底忘掉。</div>
+        <div class="field">
+          <div><div class="field-label">停留时间（天）</div><div class="field-hint">超过就真的没了</div></div>
+          <input type="number" value="365">
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════ 记忆模式 ══════ -->
+    <section class="page" id="page-mode">
+      <div class="page-head">
+        <h1>记忆模式</h1>
+        <p>决定忘不忘、忘多少、能不能被提醒起来。</p>
+      </div>
+
+      <div class="modes wide">
+        <div class="mode active">
+          <div class="check">✓</div>
+          <div class="mode-name">遗忘模式</div>
+          <div class="mode-desc">会忘。被提醒能想起来一部分，但永远想不全。最像人。</div>
+        </div>
+        <div class="mode">
+          <div class="check">✓</div>
+          <div class="mode-name">伪遗忘模式</div>
+          <div class="mode-desc">看起来忘了，一提示全回来。自己也以为忘了。</div>
+        </div>
+        <div class="mode">
+          <div class="check">✓</div>
+          <div class="mode-name">永不忘记模式</div>
+          <div class="mode-desc">总库开放，什么都能查回来。适合当档案型角色。</div>
+        </div>
+        <div class="mode">
+          <div class="check">✓</div>
+          <div class="mode-name">自定义</div>
+          <div class="mode-desc">每一圈单独调比例，想怎么配怎么配。</div>
+        </div>
+      </div>
+
+      <div class="card wide" id="mode-facts">
+        <div class="card-title" id="mf-title">选中的模式 · 实际会怎么忘</div>
+        <div class="card-desc" id="mf-desc">点上面任意一张，这里就换成那档的数。</div>
+        <div class="facts" id="mf-grid"></div>
+      </div>
+
+<div class="card wide" id="custom-config" hidden>
+        <div class="card-title">自定义 · 每圈留多少</div>
+        <div class="card-desc">只有这一档能动比例。记忆圈那边只管条数和天数，不碰这里。</div>
+        <div class="cfg-grid">
+          <div class="field">
+            <div><div class="field-label">闲聊圈可见度</div><div class="field-hint">进圈当天能看清多少</div></div>
+            <div class="slider-row">
+              <input type="range" min="0" max="100" value="80" data-path="customRatios.visible.ring4" data-kind="pct">
+              <span class="slider-val">80%</span>
+            </div>
+          </div>
+          <div class="field">
+            <div><div class="field-label">闲聊圈每天淡多少</div><div class="field-hint">按天线性变淡，淡到 0 就只剩钩子</div></div>
+            <div class="slider-row">
+              <input type="range" min="0" max="20" step="0.5" value="4" data-path="customRatios.fadePerDay.ring4" data-kind="int">
+              <span class="slider-val">4%</span>
+            </div>
+          </div>
+          <div class="field">
+            <div><div class="field-label">模糊圈可见度</div><div class="field-hint">还剩多少原文，其余靠猜</div></div>
+            <div class="slider-row">
+              <input type="range" min="0" max="100" value="40" data-path="customRatios.visible.ring5" data-kind="pct">
+              <span class="slider-val">40%</span>
+            </div>
+          </div>
+          <div class="field">
+            <div><div class="field-label">回忆圈可想起</div><div class="field-hint">随机留下多少点，钩子全留</div></div>
+            <div class="slider-row">
+              <input type="range" min="0" max="100" value="30" data-path="customRatios.visible.recall" data-kind="pct">
+              <span class="slider-val">30%</span>
+            </div>
+          </div>
+          <div class="field">
+            <div><div class="field-label">闲聊圈缓冲</div><div class="field-hint">被提醒时能捞回多少</div></div>
+            <div class="slider-row">
+              <input type="range" min="0" max="100" value="90" data-path="customRatios.buffer.ring4" data-kind="pct">
+              <span class="slider-val">90%</span>
+            </div>
+          </div>
+          <div class="field">
+            <div><div class="field-label">模糊圈缓冲</div><div class="field-hint">被提醒时能捞回多少</div></div>
+            <div class="slider-row">
+              <input type="range" min="0" max="100" value="70" data-path="customRatios.buffer.ring5" data-kind="pct">
+              <span class="slider-val">70%</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card wide">
+        <div class="card-title">元记忆 · 记什么</div>
+        <div class="card-desc">
+          意识到自己忘过，会说出「总觉得有件事想不起来了」。拆点就是记：拆出互相独立的点就自己挑圈放，没拆就整条进闲聊圈。
+        </div>
+        <div class="field">
+          <div><div class="field-label">意识到自己忘了</div><div class="field-hint">打开后才会把"想不起来"这件事说出来</div></div>
+          <div class="switch on" data-cfg="metaMemory"></div>
+        </div>
+      </div>
+
+      <!-- 配额：原来单独一页，并到这里 -->
+      <div class="card wide">
+        <div class="card-title">私聊 / 群聊 怎么分</div>
+        <div class="card-desc">每一圈内部单独算。私聊有保底，群聊再闹也挤不掉。</div>
+        <div class="field">
+          <div><div class="field-label">私聊保底</div><div class="field-hint">永远留给私聊的位置</div></div>
+          <div class="slider-row">
+            <input type="range" min="0" max="100" value="40">
+            <span class="slider-val">40%</span>
+          </div>
+        </div>
+        <div class="field">
+          <div><div class="field-label">群聊最多占</div><div class="field-hint">剩下的部分</div></div>
+          <div class="slider-row">
+            <input type="range" min="0" max="100" value="60">
+            <span class="slider-val">60%</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════ 数据库 ══════ -->
+    <section class="page" id="page-db">
+      <div class="page-head">
+        <h1>数据库</h1>
+        <p>记忆库本体：存了多少、总库怎么留、怎么备份。</p>
+      </div>
+
+      <div class="card wide">
+        <div class="card-title">现在装了多少</div>
+        <div class="db-stats">
+          <div class="db-stat"><div class="db-stat-k">记忆条数</div><div class="db-stat-v" id="d-memories">—</div></div>
+          <div class="db-stat"><div class="db-stat-k">点（钩子）总数</div><div class="db-stat-v" id="d-points">—</div></div>
+          <div class="db-stat"><div class="db-stat-k">总库原始消息</div><div class="db-stat-v" id="d-vault">—</div></div>
+          <div class="db-stat"><div class="db-stat-k">占用空间</div><div class="db-stat-v" id="d-bytes">—</div></div>
+          <div class="db-stat"><div class="db-stat-k">最早一条</div><div class="db-stat-v db-stat-time" id="d-earliest">—</div></div>
+        </div>
+      </div>
+
+      <div class="card same-h">
+        <div class="card-title">当前库</div>
+        <div class="card-desc">一个记忆 = 一个文件夹，彼此隔离。</div>
+
+        <div class="field">
+          <div><div class="field-label">记忆库</div><div class="field-hint">当前挂着的那个</div></div>
+          <div class="field-hint" id="db-name" style="align-self:center">—</div>
+        </div>
+
+        <div class="field">
+          <div><div class="field-label">存放位置</div><div class="field-hint">库文件所在文件夹</div></div>
+          <div class="field-hint" id="db-dir" style="align-self:center;word-break:break-all">—</div>
+        </div>
+
+        <div class="field">
+          <div><div class="field-label">切换到</div><div class="field-hint">选好点右边保存才生效</div></div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <select id="db-switch" style="flex:1;min-width:0"></select>
+            <button class="btn primary" id="db-switch-save" type="button" style="flex:none" disabled>保存</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card same-h">
+        <div class="card-title">新建库</div>
+        <div class="card-desc">会在下面那个位置建一个同名文件夹，新库放里面。</div>
+
+        <div class="field">
+          <div><div class="field-label">库名</div><div class="field-hint">名字会成为文件夹名</div></div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input type="text" id="new-db-name" placeholder="给新库起个名字" maxlength="40" style="flex:1;min-width:0">
+            <button class="btn" id="new-db-do" type="button" style="flex:none">新建</button>
+          </div>
+        </div>
+
+        <div class="field">
+          <div><div class="field-label">放在哪</div><div class="field-hint">留空 = 跟当前库的上级目录一样</div></div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input type="text" id="new-db-parent" placeholder="留空 = 用默认位置" style="flex:1;min-width:0">
+            <button class="btn" id="new-db-pick" type="button" style="flex:none">浏览…</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card same-h">
+        <div class="card-title">所有库 / 搬家</div>
+        <div class="card-desc">点一下就能切过去。要换盘、换文件夹时，用下面的「搬整个数据目录」。</div>
+
+        <div id="db-list" class="db-list db-list-scroll">正在读…</div>
+
+        <div class="db-split">
+          <div class="field-label">搬整个数据目录</div>
+          <div class="field-hint" style="margin:4px 0 7px">连库、令牌、存档一起搬走，逐个文件核对大小和哈希。日常切库用上面的列表就行。</div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input type="text" id="db-path" value="正在读…" placeholder="输入路径，或点右边浏览…" style="flex:1;min-width:0">
+            <button class="btn" id="pick-folder" type="button" style="flex:none">浏览…</button>
+          </div>
+          <div class="move-panel" id="move-panel" hidden>
+            <div class="move-line"><span>搬过去</span><span id="move-to">—</span></div>
+            <div class="move-line"><span>一起走</span><span id="move-files">—</span></div>
+            <div class="move-warn">全部一致才删掉原位置的。任何一步不对就退回，原位置一点不动。</div>
+            <div class="btn-row" style="margin-top:11px">
+              <button class="btn primary" id="move-do" type="button">搬过去</button>
+              <button class="btn" id="move-cancel" type="button">取消</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card same-h">
+        <div class="card-title">总库</div>
+        <div class="card-desc">原始存档，不对角色开放，仅供查看。关掉的话，掉了的记忆就真的没了。</div>
+        <div class="field">
+          <div><div class="field-label">开启总库</div></div>
+          <div class="switch on" data-cfg="vault.enabled"></div>
+        </div>
+        <div class="field">
+          <div><div class="field-label">条数上限</div><div class="field-hint">0 = 不限制；设了数字就按先后删</div></div>
+          <input type="number" value="0">
+        </div>
+        <div class="field">
+          <div><div class="field-label">允许查询</div><div class="field-hint">由「记忆模式」决定：切到永不忘记模式才开放，这里改不了</div></div>
+          <span class="pill" id="vault-access">看模式</span>
+        </div>
+      </div>
+
+      <div class="card same-h">
+        <div class="card-title">维护</div>
+        <div class="card-desc">导出就是把这个库存成一个 .db 文件，放哪都行。恢复会用它整个替换现在的内容——换之前会先把现在的存一份，名字带「恢复前」。</div>
+        <div class="btn-row" style="flex-direction:column;align-items:stretch;gap:8px;margin-top:4px">
+          <button class="btn" id="btn-export" type="button">导出备份</button>
+          <button class="btn" id="btn-restore" type="button">从备份恢复</button>
+          <input type="file" id="restore-file" accept=".db,.sqlite,.sqlite3" hidden />
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ══════ 记忆更新 ══════ -->
+    <section class="page" id="page-task">
+      <div class="page-head">
+        <h1>记忆更新</h1>
+        <p>按时间把记忆往下一圈推，走到头的就忘掉。</p>
+      </div>
+
+      <div class="banner info wide">
+        <span class="bico">ℹ</span>
+        <span>这是<b>规则驱动的整理</b>，不调用大模型 —— 只按你在「记忆时间」里定的天数，把每条记忆往下一圈推。不产生任何 API 费用。</span>
+      </div>
+
+      <div class="card">
+        <div class="card-title">上次运行</div>
+        <table>
+          <tr><td class="label">时间</td><td id="last-at">—</td></tr>
+          <tr><td class="label">动了多少条</td><td class="num" id="last-applied">—</td></tr>
+          <tr><td class="label">今天掉了多少圈</td><td class="num" id="last-demoted">—</td></tr>
+          <tr><td class="label">今天彻底忘掉</td><td class="num" id="last-forgotten">—</td></tr>
+          <tr><td class="label">结果</td><td id="last-result">—</td></tr>
+        </table>
+      </div>
+
+      <div class="card">
+        <div class="card-title">自动运行</div>
+        <div class="card-desc">每天固定时间跑一次。</div>
+        <div class="field">
+          <div><div class="field-label">开启</div></div>
+          <div class="switch on" data-cfg="compaction.enabled"></div>
+        </div>
+        <div class="field">
+          <div><div class="field-label">运行时间</div><div class="field-hint">建议放在没人聊天的时候</div></div>
+          <input type="time" id="compaction-time" value="04:00">
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">手动操作</div>
+        <div class="card-desc">想立刻看效果的时候用。</div>
+        <div class="btn-row" style="margin-top:6px">
+          <button class="btn primary">立刻跑一次</button>
+          <button class="btn">只演算，不写入</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ══════ 记忆浏览 ══════ -->
+    <!-- ══════ Token 消耗 ══════ -->
+    <section class="page" id="page-token">
+      <div class="page-head">
+        <h1>Token 消耗</h1>
+        <p>AI 每一次思考花掉多少。按调用记账，高峰时段算双倍。</p>
+      </div>
+
+      <div class="banner info wide">
+        <span class="bico">ℹ</span>
+        <span><b>数据仅供参考，不一定准确</b>（按本机账本算的，模型名缺失时按 flash 价兜底）。<br>数据来自 QQ 桥接的用量账本，<b>只读</b>。高峰时段是工作日 9:00–12:00 和 14:00–18:00，单价是空闲的 2 倍。</span>
+      </div>
+
+      <div class="btn-row" style="margin-bottom:14px">
+        <button class="btn" id="token-refresh" type="button">刷新</button>
+        <span class="field-hint" id="token-updated" style="align-self:center">—</span>
+      </div>
+
+      <div class="stat-grid" id="token-metrics">
+        <div class="stat"><div class="stat-head"><span class="stat-dot"></span><span class="stat-label">总花费</span></div><div class="stat-main" id="tk-cost">—</div><div class="stat-sub" id="tk-cost-sub">读取中…</div></div>
+        <div class="stat"><div class="stat-head"><span class="stat-dot"></span><span class="stat-label">累计 token</span></div><div class="stat-main" id="tk-tokens">—</div><div class="stat-sub" id="tk-tokens-sub">输入 / 输出</div></div>
+        <div class="stat"><div class="stat-head"><span class="stat-dot"></span><span class="stat-label">缓存命中率</span></div><div class="stat-main" id="tk-hit">—</div><div class="stat-sub">命中输入 ÷ 总输入</div></div>
+        <div class="stat"><div class="stat-head"><span class="stat-dot"></span><span class="stat-label">平均每次调用</span></div><div class="stat-main" id="tk-percall">—</div><div class="stat-sub" id="tk-calls">— 次调用</div></div>
+      </div>
+
+
+      <div class="card wide">
+        <div class="card-title">消耗走势</div>
+        <div class="card-desc">柱子高 = 那段时间花掉的钱。鼠标停上去看明细。</div>
+        <div class="token-range" id="token-range">
+          <span class="range-label">时间范围</span>
+          <button class="tag active" data-hours="0" type="button">全部</button>
+          <button class="tag" data-hours="24" type="button">近 24 小时</button>
+          <button class="tag" data-hours="72" type="button">近 3 天</button>
+          <button class="tag" data-hours="168" type="button">近 7 天</button>
+          <button class="tag" data-hours="720" type="button">近 30 天</button>
+          <span class="range-note" id="token-range-note"></span>
+        </div>
+        <div class="token-chart" id="token-chart">—</div>
+      </div>
+      <div class="card same-h">
+        <div class="card-title">按会话</div>
+        <div class="card-desc">谁花得多。私聊和群聊分开算。</div>
+        <div class="scroll-box">
+          <table id="token-sessions">
+            <thead><tr><th>会话</th><th>类型</th><th class="num">调用</th><th class="num">输入</th><th class="num">输出</th><th class="num">花费</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card same-h">
+        <div class="card-title">价目表</div>
+        <div class="card-desc">元 / 百万 token。高峰时段在上面的基础上 ×2。</div>
+        <div class="scroll-box">
+          <table id="token-prices">
+            <thead><tr><th>模型</th><th class="num">缓存命中</th><th class="num">未命中</th><th class="num">输出</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card wide">
+        <div class="card-title">按天</div>
+        <div class="card-desc">哪天最烧钱。</div>
+        <table id="token-days">
+          <tr><th>日期</th><th class="num">调用</th><th class="num">输入</th><th class="num">输出</th><th class="num">花费</th></tr>
+        </table>
+      </div>
+    </section>
+
+    <section class="page" id="page-browse">
+      <div class="page-head">
+        <h1>记忆浏览</h1>
+        <p>看看实际记得什么，忘了什么。</p>
+      </div>
+
+      <div class="card wide">
+        <div class="card-title">各圈容量</div>
+        <div class="card-desc">这一圈最多装多少条，现在装了多少。</div>
+        <div class="ring-cap-row" id="ring-cap-row"></div>
+      </div>
+
+      <div class="card wide">
+        <div style="display:flex;gap:9px;flex-wrap:wrap;margin-bottom:16px">
+          <input type="text" placeholder="搜内容……留空按时间列全部" style="flex:1;min-width:220px">
+          <select style="width:130px">
+            <option>全部圈</option>
+            <option>圆心</option>
+            <option>一圈</option>
+            <option>二圈</option>
+            <option>三圈</option>
+            <option>闲聊圈</option>
+            <option>模糊圈</option>
+            <option>回忆圈</option>
+          </select>
+          <button class="btn">搜索</button>
+        </div>
+
+        <table id="browse-table">
+          <tr><th>记得的</th><th>在哪</th><th style="text-align:right">剩余</th><th>时间</th></tr>
+        </table>
+      </div>
+
+
+    </section>
+
+    <!-- ══════ 连接状态 ══════ -->
+    <section class="page" id="page-health">
+      <div class="page-head">
+        <h1>连接状态</h1>
+        <p>谁在跑、谁连上了、库有多满。</p>
+      </div>
+
+      <div class="card wide health-hero" id="health-hero">
+        <div class="hero-dot" id="hero-dot"></div>
+        <div class="hero-body">
+          <div class="hero-title" id="hero-title">正在探测…</div>
+          <div class="hero-sub" id="hero-sub">OneBot · QQ · 记忆库</div>
+        </div>
+        <div class="hero-facts">
+          <div class="hero-fact"><b id="hf-port">—</b><span>面板端口</span></div>
+          <div class="hero-fact"><b id="hf-uptime">—</b><span>已跑</span></div>
+          <div class="hero-fact"><b id="hf-gw">—</b><span>网关</span></div>
+          <div class="hero-fact"><b id="hf-check">—</b><span>检测耗时</span></div>
+        </div>
+        <button class="btn ghost" id="health-refresh" type="button">重新检测</button>
+      </div>
+
+      <div class="stat-grid wide">
+        <div class="stat" id="svc-server">
+          <div class="stat-head"><span class="stat-dot"></span><span class="stat-label">面板服务</span></div>
+          <div class="stat-main" id="v-server">—</div>
+          <div class="stat-sub" id="s-server">—</div>
+        </div>
+        <div class="stat" id="svc-onebot">
+          <div class="stat-head"><span class="stat-dot"></span><span class="stat-label">OneBot 网关</span></div>
+          <div class="stat-main" id="v-onebot">—</div>
+          <div class="stat-sub" id="s-onebot">—</div>
+        </div>
+        <div class="stat" id="svc-qq">
+          <div class="stat-head"><span class="stat-dot"></span><span class="stat-label">QQ 账号</span></div>
+          <div class="stat-main" id="v-qq">—</div>
+          <div class="stat-sub" id="s-qq">—</div>
+        </div>
+        <div class="stat" id="svc-db">
+          <div class="stat-head"><span class="stat-dot"></span><span class="stat-label">记忆库</span></div>
+          <div class="stat-main" id="v-db">—</div>
+          <div class="stat-sub" id="s-db">—</div>
+        </div>
+      </div>
+
+      <div class="card wide">
+        <div class="card-title">网关细节</div>
+        <div class="card-desc">连上以后，这里放网关上报的运行数据。</div>
+        <div class="meta-rows" id="gw-detail"></div>
+      </div>
+
+      <div class="card wide">
+        <div class="card-title">其他服务</div>
+        <div class="others" id="h-others"></div>
+      </div>
+
+    </section>
+
+  </main>
+</div>
+
+<div class="savebar">
+  <span class="status">有未保存的改动</span>
+  <button class="btn ghost">恢复默认</button>
+  <button class="btn primary">保存设置</button>
+</div>
+
+<script>
+  // 没登录会被接口打回登录页，这里不用先判断
+  // 退出登录
+  const quitBtn = document.getElementById('quit');
+  if (quitBtn) {
+    quitBtn.addEventListener('click', () => {
+      fetch('/api/logout').finally(() => location.replace('login.html'));
+    });
+  }
+
+  // 右上角「当前库」：直接跳到数据库页，看库文件和存放位置
+  const curDbBtn = document.getElementById('cur-db');
+  if (curDbBtn) {
+    curDbBtn.addEventListener('click', () => {
+      const nav = [...document.querySelectorAll('.nav-item')].find((x) => x.dataset.page === 'db');
+      if (nav) nav.click();
+    });
+  }
+
+  /** 有没有没保存的配置改动 */
+  function hasUnsaved() {
+    const s = document.querySelector('.savebar .status');
+    return Boolean(s && s.classList.contains('dirty'));
+  }
+
+  // 导航
+  document.querySelectorAll('.nav-item').forEach((item) => {
+    item.addEventListener('click', async (ev) => {
+      // 有没保存的改动就拦一下：保存是「点按钮才写库」，切页不会自动存
+      if (hasUnsaved()) {
+        ev.stopImmediatePropagation?.();
+        const go = await openModal(
+          '还有改动没保存',
+          '切走就不生效了。\n\n要回去保存，点「留下」；确定不要这些改动，点「直接切走」。',
+          { ok: '直接切走', cancel: '留下' }
+        );
+        if (!go) return;
+        markClean();
+      }
+      document.querySelectorAll('.nav-item').forEach((n) => n.classList.remove('active'));
+      document.querySelectorAll('.page').forEach((p) => p.classList.remove('active'));
+      item.classList.add('active');
+      const page = document.getElementById('page-' + item.dataset.page);
+      if (page) page.classList.add('active');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+  });
+
+  // 滑条 + 手动输入框
+  document.querySelectorAll('.slider-row').forEach((row) => {
+    const range = row.querySelector('input[type="range"]');
+    const val = row.querySelector('.slider-val');
+    if (!range || !val) return;
+
+    const num = document.createElement('input');
+    num.type = 'number';
+    num.min = '0';
+    num.max = '100';
+    num.value = range.value;
+    num.className = 'num-input';
+    num.setAttribute('aria-label', '手动输入百分比');
+
+    const unit = document.createElement('span');
+    unit.className = 'unit';
+    unit.textContent = '%';
+
+    val.replaceWith(num, unit);
+
+    const clamp = (v) => Math.max(0, Math.min(100, Math.round(Number(v) || 0)));
+
+    range.addEventListener('input', () => {
+      num.value = range.value;
+      markDirty();
+    });
+
+    num.addEventListener('input', () => {
+      if (num.value === '') return;
+      range.value = clamp(num.value);
+      markDirty();
+    });
+
+    num.addEventListener('blur', () => {
+      const v = clamp(num.value);
+      num.value = v;
+      range.value = v;
+    });
+
+    num.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') num.blur();
+    });
+  });
+
+  // 开关
+  document.querySelectorAll('.switch').forEach((sw) => {
+    if (sw.classList.contains('disabled')) return; // 没接字段的，点了也只换个色，没意义
+    sw.addEventListener('click', () => {
+      sw.classList.toggle('on');
+      markDirty();
+    });
+  });
+
+  // 有点圆圈跳到记忆圈页
+  document.querySelectorAll('.ring-svg circle[data-ring]').forEach((c) => {
+    c.addEventListener('click', () => {
+      const nav = document.querySelector('.nav-item[data-page="rings"]');
+      if (nav) nav.click();
+    });
+  });
+
+  // 改动提示
+  function markDirty() {
+    const s = document.querySelector('.savebar .status');
+    if (s) {
+      s.textContent = '有未保存的改动';
+      s.classList.add('dirty');
+    }
+  }
+
+  function markClean() {
+    const s = document.querySelector('.savebar .status');
+    if (s) {
+      s.textContent = '已保存';
+      s.classList.remove('dirty');
+    }
+  }
+
+  // ══════ 配置：控件 ←→ 记忆库 ══════
+  const RING_TITLES = [
+    ['圆心', 'core'],
+    ['一圈', 'ring1'],
+    ['二圈', 'ring2'],
+    ['三圈', 'ring3'],
+    ['闲聊圈', 'ring4'],
+    ['模糊圈', 'ring5'],
+    ['回忆圈', 'recall'],
+  ];
+
+  /** 把每个控件认出来：它该改配置里的哪一项 */
+  function findBindings() {
+    const out = [];
+    for (const card of document.querySelectorAll('.card')) {
+      const title = card.querySelector('.card-title')?.textContent.trim() || '';
+      const hit = RING_TITLES.find(([k]) => title.startsWith(k));
+      const ring = hit ? hit[1] : null;
+
+      for (const field of card.querySelectorAll('.field')) {
+        const label = field.querySelector('.field-label')?.textContent.trim() || '';
+        const num = field.querySelector('input[type="number"]');
+        const rng = field.querySelector('input[type="range"]');
+
+        if (ring && num && label.includes('停留时间')) out.push({ el: num, path: 'rings.' + ring + '.days', kind: 'int' });
+        if (ring && num && label.includes('条数上限')) out.push({ el: num, path: 'rings.' + ring + '.cap', kind: 'int' });
+        if (ring && rng && label.includes('可见度')) out.push({ el: rng, path: 'customRatios.visible.' + ring, kind: 'pct' });
+        if (ring && rng && label.includes('可捞回')) out.push({ el: rng, path: 'customRatios.buffer.' + ring, kind: 'pct' });
+        // 回忆圈那张卡叫「可想起」，不是「可见度」
+        if (ring && rng && label.includes('可想起')) out.push({ el: rng, path: 'customRatios.visible.' + ring, kind: 'pct' });
+        // 总库那张卡不带圈名，单独认
+        if (title === '总库' && num && label.includes('条数上限')) out.push({ el: num, path: 'vault.cap', kind: 'int' });
+
+        if (rng && label.includes('私聊保底')) out.push({ el: rng, path: 'quota.private', kind: 'pct' });
+        if (rng && label.includes('群聊最多占')) out.push({ el: rng, path: 'quota.group', kind: 'pct' });
+      }
+    }
+    // 自定义模式那组滑块直接写了 data-path，不用靠标题猜
+    for (const el of document.querySelectorAll('[data-path]')) {
+      out.push({ el, path: el.dataset.path, kind: el.dataset.kind || 'pct' });
+    }
+    return out;
+  }
+
+  const bindings = findBindings();
+
+  const dig = (obj, path) => path.split('.').reduce((o, k) => (o == null ? o : o[k]), obj);
+
+  /** 把库里的配置填到控件上 */
+  function fillControls(cfg) {
+    for (const b of bindings) {
+      const v = dig(cfg, b.path);
+      if (v === undefined || v === null) continue;
+      if (b.el.disabled) continue; // 锁住的项（比如闲聊圈的渐变）不回填
+      const shown = b.kind === 'pct' ? Math.round(v * 100) : v;
+      b.el.value = shown;
+      // 滑块旁边那个数字框跟着变
+      const row = b.el.closest('.slider-row');
+      const numBox = row?.querySelector('.num-input');
+      if (numBox) numBox.value = shown;
+    }
+  }
+
+  /** 从控件收回来，拼成一个只含改动的补丁 */
+  function collectPatch() {
+    const patch = { rings: {}, customRatios: { visible: {}, buffer: {} }, quota: {} };
+    const put = (path, val) => {
+      const parts = path.split('.');
+      let o = patch;
+      for (let i = 0; i < parts.length - 1; i++) {
+        o[parts[i]] = o[parts[i]] || {};
+        o = o[parts[i]];
+      }
+      o[parts[parts.length - 1]] = val;
+    };
+
+    for (const b of bindings) {
+      if (b.el.disabled) continue; // 锁住的项不往库里写
+      // 不是自定义模式时，比例由模式内置值决定，不覆盖自定义那套
+      if (b.path.startsWith('customRatios.') && selectedMode && selectedMode !== 'custom') continue;
+      const raw = b.el.value;
+      if (raw === '') continue;
+      const n = Number(raw);
+      if (Number.isNaN(n)) continue;
+      put(b.path, b.kind === 'pct' ? Math.min(1, Math.max(0, n / 100)) : n);
+    }
+
+    // 顺手带上当前选中的模式和档位
+    if (selectedMode) patch.mode = selectedMode;
+
+    // 开关（只有接了字段的那些）
+    for (const sw of document.querySelectorAll('.switch[data-cfg]')) {
+      put(sw.dataset.cfg, sw.classList.contains('on'));
+    }
+
+    // 每天几点跑
+    const t = document.getElementById('compaction-time');
+    if (t && t.value) {
+      const [hh, mm] = t.value.split(':').map(Number);
+      if (Number.isFinite(hh)) put('compaction.hour', hh);
+      if (Number.isFinite(mm)) put('compaction.minute', mm);
+    }
+
+    // 空的分组不传：传过去会把库里那一整块冲掉
+    const isEmpty = (o) => !o || Object.keys(o).length === 0;
+    if (isEmpty(patch.rings)) delete patch.rings;
+    if (isEmpty(patch.quota)) delete patch.quota;
+    if (
+      isEmpty(patch.customRatios?.visible) &&
+      isEmpty(patch.customRatios?.buffer) &&
+      isEmpty(patch.customRatios?.fadePerDay)
+    )
+      delete patch.customRatios;
+
+    return patch;
+  }
+
+  async function api(path, opts = {}) {
+    const r = await fetch(path, {
+      headers: { 'content-type': 'application/json' },
+      ...opts,
+    });
+    if (r.status === 401) {
+      location.replace('login.html');
+      throw new Error('没登录');
+    }
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok || body.ok === false) throw new Error(body.error || '保存失败');
+    return body.data;
+  }
+
+  // ── 在线更新：查一次，有新版就在左下角冒出来 ──────
+  const updaterEl = document.getElementById('updater');
+
+  function hideUpdater() {
+    if (updaterEl) updaterEl.hidden = true;
+  }
+
+  async function checkUpdate() {
+    if (!updaterEl) return;
+    let d;
+    try {
+      d = await api('/api/update-check');
+    } catch {
+      return; // 查不到就算了，别打扰
+    }
+    if (!d || !d.hasUpdate) return;
+
+    const titleEl = document.getElementById('updater-title');
+    const bodyEl = document.getElementById('updater-body');
+    const doBtn = document.getElementById('updater-do');
+
+    if (titleEl) titleEl.textContent = '有新版本 ' + d.latest;
+    if (bodyEl) {
+      bodyEl.innerHTML =
+        '现在是 <b>v' + d.current + '</b>，可以升到 <b>v' + d.latest + '</b>。' +
+        (d.behind > 0 ? '<br>落后 ' + d.behind + ' 个提交。' : '') +
+        '<br>只换程序，记忆库和设置都不动。';
+    }
+    if (doBtn) doBtn.disabled = !d.canAutoUpdate;
+    if (d.canAutoUpdate === false && bodyEl) {
+      bodyEl.innerHTML += '<br><span style="color:#ffb4b4">' + (d.reason || '这个装法没法自动更新') + '</span>';
+    }
+    updaterEl.hidden = false;
+  }
+
+  async function doUpdate() {
+    if (!updaterEl) return;
+    const ok = await showConfirm(
+      '更新到最新版',
+      '会从 GitHub 拉最新代码，然后自动重启面板。\n\n' +
+        '记忆库、设置、令牌、OneBot 配置都不会动。\n' +
+        '更新完这个页面会自己刷新。',
+      { ok: '更新', cancel: '算了' }
+    );
+    if (!ok) return;
+
+    const doBtn = document.getElementById('updater-do');
+    const laterBtn = document.getElementById('updater-later');
+    const bodyEl = document.getElementById('updater-body');
+
+    updaterEl.classList.add('busy');
+    if (doBtn) { doBtn.disabled = true; doBtn.textContent = '更新中…'; }
+    if (laterBtn) laterBtn.disabled = true;
+    if (bodyEl) bodyEl.innerHTML = '正在拉代码…';
+
+    let r = null;
+    try {
+      r = await api('/api/update', { method: 'POST', body: '{}' });
+    } catch (e) {
+      updaterEl.classList.remove('busy');
+      if (doBtn) { doBtn.disabled = false; doBtn.textContent = '再试一次'; }
+      if (laterBtn) laterBtn.disabled = false;
+      if (bodyEl) bodyEl.innerHTML = '<span style="color:#ffb4b4">没更新成：' + (e.message || e) + '</span>';
+      return;
+    }
+
+    if (bodyEl) {
+      bodyEl.innerHTML =
+        '已经到 <b>v' + (r.toVersion || '?') + '</b>。' +
+        (r.stashed ? '<br>你之前的本地改动收进了 git stash。' : '') +
+        '<br>正在重启面板…';
+    }
+    updaterEl.classList.remove('busy');
+    updaterEl.classList.add('done');
+
+    // 等服务回来
+    const t0 = Date.now();
+    const tick = async () => {
+      if (Date.now() - t0 > 60000) {
+        if (bodyEl) bodyEl.innerHTML = '面板没在 1 分钟内回来。可以手动关掉再启动一次。';
+        return;
+      }
+      try {
+        const rr = await fetch('/api/health', { credentials: 'same-origin' });
+        if (rr.ok) {
+          if (bodyEl) bodyEl.innerHTML = '重启好了，正在刷新…';
+          setTimeout(() => location.reload(), 600);
+          return;
+        }
+      } catch {}
+      setTimeout(tick, 1200);
+    };
+    setTimeout(tick, 1500);
+  }
+
+  document.getElementById('updater-do')?.addEventListener('click', doUpdate);
+  document.getElementById('updater-later')?.addEventListener('click', hideUpdater);
+
+  // 进页面查一次；之后每半小时瞄一眼
+  setTimeout(checkUpdate, 2500);
+  setInterval(checkUpdate, 30 * 60 * 1000);
+
+  // ── 统一弹窗（替代浏览器 alert / confirm）─────────
+  let modalResolve = null;
+
+  function openModal(title, body, opts = {}) {
+    const {
+      ok = '好的',
+      cancel = null,
+      danger = false,
+      input = false,
+      placeholder = '',
+      value = '',
+    } = opts;
+
+    return new Promise((resolve) => {
+      const mask = document.getElementById('modal-mask');
+      const t = document.getElementById('modal-title');
+      const b = document.getElementById('modal-body');
+      const okBtn = document.getElementById('modal-ok');
+      const cancelBtn = document.getElementById('modal-cancel');
+      if (!mask || !okBtn) return resolve(input ? '' : true);
+
+      modalResolve = resolve;
+      if (t) t.textContent = title || '提示';
+      if (b) b.textContent = body == null ? '' : String(body);
+      okBtn.textContent = ok;
+      okBtn.className = 'btn ' + (danger ? 'danger' : 'primary');
+      if (cancelBtn) {
+        cancelBtn.hidden = !cancel;
+        cancelBtn.textContent = cancel || '取消';
+      }
+
+      // 需要填字的时候才长出一个输入框
+      let inputEl = document.getElementById('modal-input');
+      if (input) {
+        if (!inputEl) {
+          inputEl = document.createElement('input');
+          inputEl.id = 'modal-input';
+          inputEl.type = 'text';
+          inputEl.maxLength = 40;
+          inputEl.style.cssText = 'width:100%;margin-top:12px;box-sizing:border-box';
+          if (b && b.parentNode) b.parentNode.insertBefore(inputEl, b.nextSibling);
+        }
+        inputEl.hidden = false;
+        inputEl.placeholder = placeholder;
+        inputEl.value = value;
+      } else if (inputEl) {
+        inputEl.hidden = true;
+      }
+
+      mask.hidden = false;
+      setTimeout(() => (input ? inputEl : okBtn).focus(), 40);
+    });
+  }
+
+  function closeModal(v) {
+    const mask = document.getElementById('modal-mask');
+    if (mask) mask.hidden = true;
+
+    const inputEl = document.getElementById('modal-input');
+    const useInput = !!(inputEl && !inputEl.hidden);
+    const picked = useInput ? String(inputEl.value || '').trim() : null;
+
+    const r = modalResolve;
+    modalResolve = null;
+    if (!r) return;
+
+    // 输入模式：取消 → null，确定 → 文字（空也算取消）
+    if (useInput) return r(v ? picked || null : null);
+    r(v);
+  }
+
+  const showAlert = (title, body) => openModal(title, body, { ok: '知道了' });
+  const showConfirm = (title, body, opts = {}) => openModal(title, body, opts);
+
+  // 弹窗元素在 <script> 之后才解析，所以用事件委托，别按 id 提前绑
+  document.addEventListener('click', (e) => {
+    const id = e.target && e.target.id;
+    if (id === 'modal-ok') closeModal(true);
+    else if (id === 'modal-cancel') closeModal(false);
+    else if (id === 'modal-mask') closeModal(false);
+  });
+  document.addEventListener('keydown', (e) => {
+    const mask = document.getElementById('modal-mask');
+    if (!mask || mask.hidden) return;
+    if (e.key === 'Escape') closeModal(false);
+    if (e.key === 'Enter') closeModal(true);
+  });
+
+  // 让页面里所有 alert(...) 都走自定义弹窗
+  const alert = (...args) => showAlert('提示', args.join(' '));
+
+  // ── Token 消耗 ────────────────────────────────────
+  const fmtMoney = (n) => '¥' + (Number(n) || 0).toFixed(2);
+  const fmtTok = (n) => {
+    const v = Number(n) || 0;
+    if (v >= 1e8) return (v / 1e8).toFixed(2) + ' 亿';
+    if (v >= 1e4) return (v / 1e4).toFixed(1) + ' 万';
+    return String(Math.round(v));
+  };
+  const fmtWhen = (ms) => (ms ? new Date(ms).toLocaleString('zh-CN', { hour12: false }) : '—');
+
+  async function loadTokenUsage(hours = 0) {
+    const btn = document.getElementById('token-refresh');
+    const note = document.getElementById('token-updated');
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = '刷新中…';
+    }
+
+    let d;
+    try {
+      d = await api('/api/token-usage?hours=' + (Number(hours) || 0));
+    } catch (e) {
+      const el = document.getElementById('tk-cost-sub');
+      if (el) el.textContent = '读不到：' + e.message;
+      return;
+    }
+
+    if (!d || !d.ok) {
+      const el = document.getElementById('tk-cost-sub');
+      if (el) el.textContent = (d && d.error) || '没有数据';
+      return;
+    }
+
+    const put = (id, v) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = v;
+    };
+
+    put('tk-cost', fmtMoney(d.totals.cost));
+    put('tk-cost-sub', d.records + ' 次调用 · ' + (d.firstAt ? fmtWhen(d.firstAt) + ' 起' : ''));
+    put('tk-tokens', fmtTok(d.totals.tokens));
+    put('tk-tokens-sub', '输入 ' + fmtTok(d.totals.input) + ' / 输出 ' + fmtTok(d.totals.output));
+    put('tk-hit', ((d.totals.hitRate || 0) * 100).toFixed(1) + '%');
+    put('tk-percall', fmtTok(d.totals.perCall));
+    put('tk-calls', d.totals.calls + ' 次调用');
+
+    // 按会话
+    const sBox = document.querySelector('#token-sessions tbody');
+    if (sBox) {
+      sBox.innerHTML =
+        (d.sessions.length
+          ? d.sessions
+              .map(
+                (g) =>
+                  '<tr><td title="' + g.key + '">' +
+                  g.key.replace(/^(private|group|internal):/, '') +
+                  '</td><td>' +
+                  g.kind +
+                  '</td><td class="num">' +
+                  g.calls +
+                  '</td><td class="num">' +
+                  fmtTok(g.cacheHit + g.cacheMiss) +
+                  '</td><td class="num">' +
+                  fmtTok(g.output) +
+                  '</td><td class="num">' +
+                  fmtMoney(g.cost) +
+                  '</td></tr>'
+              )
+              .join('')
+          : '<tr><td colspan="6" style="color:var(--dim);padding:14px 10px">还没有记录</td></tr>');
+    }
+
+    // 消耗走势（纯 SVG 柱状，按天，从早到晚）
+    const cBox = document.getElementById('token-chart');
+    if (cBox) {
+      const rows = [...d.days].sort((a, b) => (a.date < b.date ? -1 : 1));
+      if (!rows.length) {
+        cBox.innerHTML = '<div style="color:var(--dim);font-size:12px;padding:24px 0">还没有数据</div>';
+      } else {
+        const W = 1200;
+        const H = 200;
+        const padL = 8;
+        const padR = 8;
+        const padB = 26;
+        const padT = 16;
+        const innerW = W - padL - padR;
+        const innerH = H - padT - padB;
+        const maxCost = Math.max(...rows.map((r) => r.cost), 0.0001);
+        const slot = innerW / rows.length;
+        const barW = Math.max(4, Math.min(46, slot * 0.6));
+
+        const parts = [];
+        // 基线
+        parts.push(
+          '<line class="axis" x1="' + padL + '" y1="' + (padT + innerH) + '" x2="' + (W - padR) + '" y2="' + (padT + innerH) + '" />'
+        );
+
+        rows.forEach((r, i) => {
+          const h = Math.max(2, (r.cost / maxCost) * innerH);
+          const x = padL + slot * i + (slot - barW) / 2;
+          const y = padT + innerH - h;
+          const ratio = r.cost / maxCost;
+          const cls = ratio > 0.66 ? 'bar hi' : ratio > 0.33 ? 'bar mid' : 'bar';
+          parts.push(
+            '<rect class="' + cls + '" x="' + x.toFixed(1) + '" y="' + y.toFixed(1) + '" width="' + barW.toFixed(1) + '" height="' + h.toFixed(1) + '" rx="3">' +
+              '<title>' + r.date + ' · ' + fmtMoney(r.cost) + ' · ' + r.calls + ' 次</title>' +
+              '</rect>'
+          );
+          // 日期标签：多了就隔几个标一个
+          const step = Math.ceil(rows.length / 10);
+          if (i % step === 0 || i === rows.length - 1) {
+            parts.push(
+              '<text class="lbl" x="' + (x + barW / 2).toFixed(1) + '" y="' + (H - 8) + '" text-anchor="middle">' +
+                r.date.slice(5) +
+                '</text>'
+            );
+          }
+          // 最高的那根标金额
+          if (ratio === 1) {
+            parts.push(
+              '<text class="val" x="' + (x + barW / 2).toFixed(1) + '" y="' + (y - 4).toFixed(1) + '" text-anchor="middle">' +
+                fmtMoney(r.cost) +
+                '</text>'
+            );
+          }
+        });
+
+        cBox.innerHTML =
+          '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none">' + parts.join('') + '</svg>';
+      }
+    }
+
+    // 按天
+    const dBox = document.getElementById('token-days');
+    if (dBox) {
+      const head = dBox.querySelector('tr')?.outerHTML || '';
+      dBox.innerHTML =
+        head +
+        (d.days.length
+          ? d.days
+              .map(
+                (g) =>
+                  '<tr><td>' +
+                  g.date +
+                  '</td><td class="num">' +
+                  g.calls +
+                  '</td><td class="num">' +
+                  fmtTok(g.cacheHit + g.cacheMiss) +
+                  '</td><td class="num">' +
+                  fmtTok(g.output) +
+                  '</td><td class="num">' +
+                  fmtMoney(g.cost) +
+                  '</td></tr>'
+              )
+              .join('')
+          : '<tr><td colspan="5" style="color:var(--dim)">还没有记录</td></tr>');
+    }
+
+    if (note) {
+      note.textContent = '更新于 ' + new Date().toLocaleTimeString('zh-CN', { hour12: false });
+    }
+
+    // 时间范围按钮高亮 + 当前窗口的条数
+    document.querySelectorAll('#token-range .tag').forEach((b) => {
+      b.classList.toggle('active', Number(b.dataset.hours) === Number(hours));
+    });
+    const rnote = document.getElementById('token-range-note');
+    if (rnote) {
+      rnote.textContent = d.records + ' 次调用' + (d.firstAt ? ' · 最早 ' + fmtWhen(d.firstAt) : '');
+    }
+
+    // 价目表：金额带 ¥，按去重后的模型列（同一模型多个别名只显示一次）
+    const pBox = document.querySelector('#token-prices tbody');
+    if (pBox) {
+      const seen = new Set();
+      const rows = [];
+      for (const [id, p] of Object.entries(d.prices || {})) {
+        const key = p.label || id;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        rows.push([key, p]);
+      }
+      const money = (n) => '¥' + Number(n || 0).toFixed(2);
+      pBox.innerHTML = rows
+        .map(
+          ([label, p]) =>
+            '<tr><td>' +
+            label +
+            '</td><td class="num">' +
+            money(p.cacheHit) +
+            '</td><td class="num">' +
+            money(p.cacheMiss) +
+            '</td><td class="num">' +
+            money(p.output) +
+            '</td></tr>'
+        )
+        .join('');
+    }
+
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = '刷新';
+    }
+  }
+
+  /** 读库清单：填下拉 + 列表 + 当前信息 */
+  async function loadDbs() {
+    const box = document.getElementById('db-list');
+    if (!box) return;
+
+    const fmtB = (b) => {
+      if (!b) return '—';
+      if (b < 1024) return b + ' B';
+      if (b < 1024 * 1024) return (b / 1024).toFixed(1) + ' KB';
+      return (b / 1024 / 1024).toFixed(1) + ' MB';
+    };
+
+    let info = null;
+    try {
+      info = await api('/api/databases');
+    } catch {
+      box.textContent = '读不出来';
+      return;
+    }
+
+    const list = info.list || [];
+    const cur = list.find((d) => d.current);
+
+    // 当前信息
+    const nameEl = document.getElementById('db-name');
+    const dirEl = document.getElementById('db-dir');
+    const pathEl = document.getElementById('db-path');
+    if (nameEl && cur) nameEl.textContent = cur.name;
+    if (dirEl) dirEl.textContent = info.dir || '—';
+    if (pathEl && document.activeElement !== pathEl) pathEl.value = info.dir || '';
+
+    // 列表
+    box.innerHTML = list.length
+      ? list
+          .map(
+            (d) =>
+              '<div class="db-row' + (d.current ? ' cur' : '') + '">' +
+              '<div style="flex:1;min-width:0">' +
+              '<div class="db-n">' + esc(d.name) + '</div>' +
+              '<div class="db-m" title="' + esc(d.dir) + '">' + esc(d.dir) + '</div>' +
+              '</div>' +
+              '<span class="db-m">' +
+              (d.exists
+                ? (d.memories == null ? '读不出' : d.memories + ' 条') + ' · ' + fmtB(d.bytes)
+                : '文件不在了') +
+              '</span>' +
+              (d.current
+                ? '<span class="pill ok">正在用</span>'
+                : '<button class="db-del" type="button" data-del="' + esc(d.name) + '" data-db="' + esc(d.path) + '" title="删掉这个库（整个文件夹）">删除</button>') +
+              '</div>'
+          )
+          .join('')
+      : '<div style="color:var(--dim);font-size:12.5px">还没有别的库</div>';
+
+    // 下拉
+    const sel = document.getElementById('db-switch');
+    if (sel) {
+      sel.dataset.current = info.current || '';
+      sel.innerHTML =
+        list
+          .map(
+            (d) =>
+              '<option value="' + esc(d.path) + '">' +
+              esc(d.name) + (d.current ? '（正在用）' : '') + ' — ' + esc(d.dir) +
+              '</option>'
+          )
+          .join('');
+
+      // 显式停在当前库上 —— 不设的话浏览器会自己挑，看起来像"已经在别的库上了"
+      const curPath = info.current || (cur && cur.path) || '';
+      if (curPath && [...sel.options].some((o) => o.value === curPath)) {
+        sel.value = curPath;
+      } else {
+        sel.selectedIndex = 0;
+      }
+
+      const saveBtn = document.getElementById('db-switch-save');
+      if (saveBtn) saveBtn.disabled = true;
+    }
+  }
+
+  // 模式单选：按名字认出是哪一种
+  const MODE_BY_NAME = {
+    '遗忘模式': 'forget',
+    '伪遗忘模式': 'pseudo-forget',
+    '永不忘记模式': 'never-forget',
+    '自定义': 'custom',
+  };
+
+  let selectedMode = null;
+  /** 库里现在存的是哪个模式。点来点去最后回到它，就等于没改。 */
+  let savedMode = null;
+
+  document.querySelectorAll('.mode').forEach((card) => {
+    const name = card.querySelector('.mode-name')?.textContent.trim() || '';
+    card.dataset.mode = MODE_BY_NAME[name] || '';
+
+    card.addEventListener('click', () => {
+      if (!card.dataset.mode) return;
+      // 点的就是现在这个 → 什么都没变，不该标成"有改动"
+      if (selectedMode === card.dataset.mode && card.classList.contains('active')) return;
+      document.querySelectorAll('.mode').forEach((c) => c.classList.remove('active'));
+      card.classList.add('active');
+      selectedMode = card.dataset.mode;
+      renderModeFacts(selectedMode); // 下面那排数值也跟着换
+      // 绕一圈又回到原来那个模式 = 什么都没改，不该催人保存
+      if (savedMode && selectedMode === savedMode) markClean();
+      else markDirty();
+    });
+  });
+
+  /** 库里现在是哪个模式，就把哪张卡点亮 */
+  function fillMode(mode) {
+    selectedMode = mode;
+    savedMode = mode; // 这个才是库里存着的，用来判断"最后有没有变"
+    document.querySelectorAll('.mode').forEach((c) => {
+      c.classList.toggle('active', c.dataset.mode === mode);
+    });
+    const va = document.getElementById('vault-access');
+    if (va) {
+      const open = mode === 'never-forget';
+      va.textContent = open ? '开放' : '关闭';
+      va.className = 'pill' + (open ? ' ok' : '');
+    }
+    // 下面那排数值跟着换
+    renderModeFacts(mode);
+  }
+
+  /** 四种模式的内置值，点模式时拿来做预览 */
+  let MODES_CACHE = null;
+
+
+  /** 把某档模式的实际数值铺成五根条；切换模式时重画 */
+  function renderModeFacts(mode) {
+    const grid = document.getElementById('mf-grid');
+    const title = document.getElementById('mf-title');
+    const desc = document.getElementById('mf-desc');
+    if (!grid) return;
+    const m = MODES_CACHE?.find((x) => x.id === mode);
+    if (!m) return;
+
+    const pct = (v) => Math.round((v ?? 0) * 100);
+    const isCustom = !m.visible;
+
+    // 自定义：把数值条藏起来，展开下面那组滑块
+    const wrap = document.getElementById('mode-facts');
+    const cfg = document.getElementById('custom-config');
+    if (wrap) wrap.hidden = isCustom;
+    if (cfg) cfg.hidden = !isCustom;
+    if (isCustom) return;
+    const ring4 = m.fade ? 100 : pct(m.visible?.ring4);
+    const ring5 = pct(m.visible?.ring5);
+    const recall = pct(m.visible?.recall);
+    const buf5 = pct(m.buffer?.ring5);
+
+    if (title) title.textContent = m.label + ' · 实际会怎么忘';
+    if (desc) {
+      desc.textContent = isCustom
+        ? '每圈用「记忆圈」里自己设的比例，这里不预览。'
+        : m.desc || '';
+    }
+
+    const item = (name, val, width, color, note) => `
+      <div class="fact">
+        <div class="fact-top"><span class="fact-name">${name}</span><span class="fact-val">${val}</span></div>
+        <div class="fact-bar"><i style="width:${width}%;background:${color}"></i></div>
+        <div class="fact-note">${note}</div>
+      </div>`;
+
+
+    grid.innerHTML =
+      item('闲聊圈', m.fade ? '100% → 80%' : ring4 + '%', ring4, 'var(--c-r4)', m.fade ? '五天里每天再淡 5%' : '一直保持这么多') +
+      item('模糊圈', ring5 + '%', ring5, 'var(--c-r5)', ring5 >= 100 ? '原文全看得见' : '只剩这么多原文，其余靠猜') +
+      item('回忆圈', recall + '%', recall, 'var(--c-recall)', '随机留下这么多点，钩子全在') +
+      item('缓冲能捞回', buf5 + '%', buf5, 'var(--accent)', buf5 >= 100 ? '一提示就全回来' : '能想起来一部分') +
+      item('总库', m.vaultAccessible ? '能查' : '关着', m.vaultAccessible ? 100 : 0, 'rgba(255,255,255,.35)', m.vaultAccessible ? '什么都能翻回来' : '看得到原始记录，但查不回来');
+  }
+
+  // 保存
+  const saveBtn = document.querySelector('.savebar .btn.primary');
+  if (saveBtn) {
+    saveBtn.addEventListener('click', async () => {
+      saveBtn.disabled = true;
+      const was = saveBtn.textContent;
+      saveBtn.textContent = '保存中…';
+      try {
+        if (selectedMode) await api('/api/mode', { method: 'POST', body: JSON.stringify({ mode: selectedMode }) });
+        // 换了方案就先切方案（它会把整套参数写进去），再提交控件上的值
+        if (pendingPreset) {
+          await api('/api/preset', { method: 'POST', body: JSON.stringify({ preset: pendingPreset }) });
+          pendingPreset = null;
+        }
+        await api('/api/config', { method: 'POST', body: JSON.stringify(collectPatch()) });
+        pendingPreset = null; // 存过了，就没有"挂着的方案"了
+        basePresetId = null; // 让下次 refreshPresetInfo 重新记成新的
+        await refreshPresetInfo();
+        markClean();
+      } catch (e) {
+        const s = document.querySelector('.savebar .status');
+        if (s) {
+          s.textContent = '没存上：' + e.message;
+          s.classList.add('dirty');
+        }
+      } finally {
+        saveBtn.disabled = false;
+        saveBtn.textContent = was;
+      }
+    });
+  }
+
+  // 恢复默认：把当前档位整套重新填一遍
+  const resetBtn = document.querySelector('.savebar .btn.ghost');
+  if (resetBtn) {
+    resetBtn.addEventListener('click', async () => {
+      try {
+        const cfg = await api('/api/config');
+        await api('/api/preset', { method: 'POST', body: JSON.stringify({ preset: cfg.preset }) });
+        const fresh = await api('/api/config');
+        fillControls(fresh);
+        markClean();
+      } catch (e) {
+        const s = document.querySelector('.savebar .status');
+        if (s) s.textContent = '恢复失败：' + e.message;
+      }
+    });
+  }
+
+  // ── 方案：内置三档只读，自己的可改 ──────────
+  const presetSelect = document.getElementById('preset-select');
+  const presetInfo = document.getElementById('preset-info');
+  /** 已经在下拉里选了、但还没按保存的方案 */
+  let pendingPreset = null;
+  /** 打开页面时库里用的是哪个方案。绕回它就等于没改。 */
+  let basePresetId = null;
+  const presetLockHint = document.getElementById('preset-lock-hint');
+  let PRESET_CACHE = null;
+
+  function fillPresetSelect(d) {
+    if (!presetSelect) return;
+    presetSelect.innerHTML =
+      '<optgroup label="系统模板（只读）">' +
+      d.builtin
+        .map((p) => '<option value="' + p.id + '">' + p.label + ' · 约 ' + p.perDay + ' 条/天</option>')
+        .join('') +
+      '</optgroup>' +
+      (d.custom.length
+        ? '<optgroup label="我的方案">' +
+          d.custom.map((p) => '<option value="' + p.id + '">' + p.label + '</option>').join('') +
+          '</optgroup>'
+        : '');
+    presetSelect.value = d.current;
+
+    // 记住"库里现在用的是哪个" —— 绕回它就不算改动
+    if (basePresetId === null) basePresetId = d.current;
+
+    // 记忆时间页的下拉：系统那组只露一个「默认方案」，自己的方案照常列
+    const tp = document.getElementById('time-preset-select');
+    if (tp) {
+      const sysOpt =
+        '<optgroup label="系统方案（只读）"><option value="' + d.current + '">默认方案</option></optgroup>';
+      const myOpt = d.custom.length
+        ? '<optgroup label="我的方案">' +
+          d.custom.map((p) => '<option value="' + p.id + '">' + p.label + '</option>').join('') +
+          '</optgroup>'
+        : '';
+      tp.innerHTML = sysOpt + myOpt;
+      // 先按"挂起的方案 > 库里当前方案"选；都对不上就退到第一项（默认方案）
+      tp.value = pendingPreset || d.current;
+      if (!tp.value && tp.options.length) tp.selectedIndex = 0;
+    }
+  }
+
+  async function refreshPresetInfo() {
+    if (!presetSelect) return;
+    try {
+      const d = await api('/api/preset');
+      PRESET_CACHE = d;
+      fillPresetSelect(d);
+
+      if (presetInfo) {
+        // 一行七个格子：上面圈名，下面实际天数，容量先满的标黄
+        presetInfo.innerHTML =
+          '<div class="pi-grid">' +
+          d.info.rings
+            .map((r) => {
+              const short = String(r.label || '').split(' · ')[0].replace(/（.*?）/g, '');
+              // 这一栏是"容量"，所以写条数，不写天数
+              const capText = r.cap === null || r.cap === undefined ? '不限' : r.cap + ' 条';
+              const note = r.capLimited ? '时间先到' : '&nbsp;';
+              const cls = r.capLimited ? ' class="cap"' : '';
+              return '<div class="pi-cell"' + cls + '><span>' + short + '</span><b>' + capText + '</b><i>' + note + '</i></div>';
+            })
+            .join('') +
+          '</div>';
+      }
+
+      paintTimeRingGrid(d);
+
+      // 系统模板 → 两页每圈的参数都锁住
+      // 用 readOnly 不用 disabled：disabled 的 input 不被 fillControls 回填，
+      // 那样锁住之后显示的就是 HTML 里的硬编码值，跟库里的对不上。
+      const isBuiltin = !d.custom.some((p) => p.id === d.current);
+      document.querySelectorAll('#page-rings [data-ring] input, #page-time [data-ring] input').forEach((el) => {
+        if (el.type === 'range') {
+          // 滑条不支持 readOnly，只能禁用；它本来就不参与系统模板
+          el.disabled = isBuiltin;
+          el.readOnly = false;
+        } else {
+          // 数字框用 readOnly：看着锁死，但 fillControls 还能把真值填进去
+          el.readOnly = isBuiltin;
+          el.disabled = false;
+        }
+      });
+      if (presetLockHint) {
+        presetLockHint.textContent = isBuiltin
+          ? '现在用的是系统模板，下面每圈的参数只能看、不能改。要改就点「新建自己的方案」。'
+          : '这是你自己的方案，下面每圈随便改，改完点下面的保存。';
+
+        // 记忆时间页那个一模一样的提示
+        const tLock = document.getElementById('time-preset-lock-hint');
+        if (tLock) tLock.textContent = presetLockHint.textContent;
+      }
+      const renameBtn = document.getElementById('preset-rename');
+      const delBtn = document.getElementById('preset-del');
+      if (renameBtn) renameBtn.hidden = isBuiltin;
+      if (delBtn) delBtn.hidden = isBuiltin;
+    } catch {
+      /* 读不到就先不改动界面 */
+    }
+  }
+
+  /** 记忆时间页那排格子：只显示天数（那一页管的是时间） */
+  /** 换方案时先照着新方案画格子，不等写库 */
+  function paintRingGridFromPreset(p) {
+    if (!p || !p.rings) return;
+    const rows = RING_TITLES.map(([label, id]) => {
+      const r = p.rings[id] || {};
+      return { id, label, days: r.days ?? null, cap: r.cap ?? null, effectiveDays: r.days ?? null, capLimited: false };
+    });
+
+    const capBox = document.getElementById('preset-info');
+    if (capBox) {
+      capBox.innerHTML =
+        '<div class="pi-grid">' +
+        rows
+          .map((r) => {
+            const short = String(r.label).split(' · ')[0].replace(/（.*?）/g, '');
+            const capText = r.cap === null || r.cap === undefined ? '不限' : r.cap + ' 条';
+            return '<div class="pi-cell"><span>' + short + '</span><b>' + capText + '</b><i>&nbsp;</i></div>';
+          })
+          .join('') +
+        '</div>';
+    }
+
+    const timeBox = document.getElementById('time-preset-info');
+    if (timeBox) {
+      timeBox.innerHTML =
+        '<div class="pi-grid">' +
+        rows
+          .map((r) => {
+            const short = String(r.label).split(' · ')[0].replace(/（.*?）/g, '');
+            const days = r.days === null ? '不出圈' : r.days + ' 天';
+            return '<div class="pi-cell"><span>' + short + '</span><b>' + days + '</b><i>&nbsp;</i></div>';
+          })
+          .join('') +
+        '</div>';
+    }
+  }
+
+  function paintTimeRingGrid(d) {
+    const box = document.getElementById('time-preset-info');
+    if (!box || !d || !d.info || !Array.isArray(d.info.rings)) return;
+    box.innerHTML =
+      '<div class="pi-grid">' +
+      d.info.rings
+        .map((r) => {
+          const short = String(r.label || '').split(' · ')[0].replace(/（.*?）/g, '');
+          const days = r.days === null ? '不出圈' : r.days + ' 天';
+          // 时间先到还是容量先到，这里标"容量先满"，因为看的是天数
+          const note = r.capLimited ? '容量先满' : '&nbsp;';
+          const cls = r.capLimited ? ' class="cap"' : '';
+          return '<div class="pi-cell"' + cls + '><span>' + short + '</span><b>' + days + '</b><i>' + note + '</i></div>';
+        })
+        .join('') +
+      '</div>';
+  }
+
+  if (presetSelect) {
+    /** 选中某个方案：只改界面，等按保存才写库 */
+    function onPresetPicked(id) {
+      const all = [...(PRESET_CACHE?.builtin || []), ...(PRESET_CACHE?.custom || [])];
+      const pick = all.find((p) => p.id === id);
+      const orig = all.find((p) => p.id === basePresetId);
+
+      // 两个下拉互相同步
+      if (presetSelect && presetSelect.value !== id) presetSelect.value = id;
+      const tp = document.getElementById('time-preset-select');
+      if (tp) {
+        // 时间页那个「默认方案」= 当前生效的系统方案，它的值要跟着系统方案走
+        const isBuiltin = (PRESET_CACHE?.builtin || []).some((p) => p.id === id);
+        const first = tp.querySelector('option');
+        if (isBuiltin && first) first.value = id;
+        if (tp.value !== id) {
+          const hit = [...tp.options].some((o) => o.value === id);
+          if (hit) tp.value = id;
+          else if (isBuiltin) tp.value = id;
+        }
+      }
+
+      const st = document.querySelector('.savebar .status');
+
+      // 先判"有没有真变"，再谈画面 —— 这样就算后面画格子出错，也不会误标成有改动
+      const sameAsSaved = basePresetId !== null && id === basePresetId;
+
+      if (sameAsSaved) {
+        pendingPreset = null;
+        if (orig && orig.rings) fillControls({ rings: orig.rings });
+        paintRingGridFromPreset(orig);
+        if (st) { st.textContent = ''; st.classList.remove('dirty'); }
+        markClean();
+        return;
+      }
+
+      pendingPreset = id;
+      if (pick && pick.rings) fillControls({ rings: pick.rings });
+      paintRingGridFromPreset(pick);
+      markDirty();
+      if (st) {
+        const label = presetSelect.options[presetSelect.selectedIndex]?.textContent || id;
+        st.textContent = '换成「' + label + '」了，还没保存';
+        st.classList.add('dirty');
+      }
+    }
+
+    presetSelect.addEventListener('change', () => onPresetPicked(presetSelect.value));
+
+    // 记忆时间页那个下拉：同一个函数
+    document.getElementById('time-preset-select')?.addEventListener('change', (e) => {
+      onPresetPicked(e.target.value);
+    });
+
+    // 记忆时间页的三个按钮 = 容量页那三个的镜像
+    const mirror = (timeId, realId) => {
+      document.getElementById(timeId)?.addEventListener('click', () => {
+        document.getElementById(realId)?.click();
+      });
+    };
+    mirror('time-preset-new', 'preset-new');
+    mirror('time-preset-rename', 'preset-rename');
+    mirror('time-preset-del', 'preset-del');
+
+    // 新建自己的方案
+    document.getElementById('preset-new')?.addEventListener('click', async () => {
+      const d = PRESET_CACHE || (await api('/api/preset').catch(() => null));
+      const curLabel =
+        d?.builtin?.find((p) => p.id === d.current)?.label ||
+        d?.custom?.find((p) => p.id === d.current)?.label ||
+        '现在这套';
+
+      const name = await openModal(
+        '新建自己的方案',
+        '会拿「' + curLabel + '」现在的值做底稿，建好之后随便改。',
+        { ok: '建', input: true, placeholder: '给这个方案起个名字' }
+      );
+      if (!name) return;
+
+      try {
+        const r = await api('/api/preset-new', { method: 'POST', body: JSON.stringify({ name }) });
+        const fresh = await api('/api/config');
+        fillControls(fresh);
+        await refreshPresetInfo();
+        markClean();
+        await showAlert('建好了', '「' + r.label + '」建好了，现在用的就是这个方案。下面每圈的参数可以随便改。');
+      } catch (e) {
+        await showAlert('没建成', e.message);
+      }
+    });
+
+    // 改名
+    document.getElementById('preset-rename')?.addEventListener('click', async () => {
+      const d = PRESET_CACHE;
+      const cur = d?.custom?.find((p) => p.id === d.current);
+      if (!cur) return;
+      const name = await openModal('给方案改名', '', {
+        ok: '改',
+        input: true,
+        value: cur.label,
+        placeholder: '新名字',
+      });
+      if (!name || name === cur.label) return;
+      try {
+        await api('/api/preset-rename', { method: 'POST', body: JSON.stringify({ id: cur.id, name }) });
+        await refreshPresetInfo();
+      } catch (e) {
+        await showAlert('没改成', e.message);
+      }
+    });
+
+    // 删掉
+    document.getElementById('preset-del')?.addEventListener('click', async () => {
+      const d = PRESET_CACHE;
+      const cur = d?.custom?.find((p) => p.id === d.current);
+      if (!cur) return;
+      const ok = await openModal(
+        '删掉这个方案',
+        '「' + cur.label + '」会被删掉，删完退回「混合」。库里已经记下的记忆不受影响。',
+        { ok: '删掉', cancel: '算了', danger: true }
+      );
+      if (!ok) return;
+      try {
+        await api('/api/preset-delete', { method: 'POST', body: JSON.stringify({ id: cur.id }) });
+        const fresh = await api('/api/config');
+        fillControls(fresh);
+        await refreshPresetInfo();
+        markClean();
+      } catch (e) {
+        await showAlert('没删成', e.message);
+      }
+    });
+
+    refreshPresetInfo();
+  }
+
+  // ══════ 维护 / 任务 / 搜索 ══════
+  const esc = (s) =>
+    String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+
+  const findBtn = (text) => [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === text);
+
+  /** 跑一轮完整的变旧（真写），然后刷新画面 */
+  findBtn('立刻跑一次')?.addEventListener('click', async (ev) => {
+    const b = ev.currentTarget;
+    const was = b.textContent;
+    b.disabled = true;
+    b.textContent = '跑着呢…';
+    try {
+      const r = await api('/api/decay', { method: 'POST' });
+      const n = (r.plan || []).length;
+      const gone = r.forgotten ?? 0;
+      const soft = r.softened ?? 0;
+      alert('跑完了：动到 ' + n + ' 条，掉圈 ' + gone + ' 条，变淡 ' + soft + ' 条。');
+      location.reload();
+    } catch (e) {
+      alert('没跑成：' + e.message);
+    } finally {
+      b.disabled = false;
+      b.textContent = was;
+    }
+  });
+
+  /** 只算不写 */
+  findBtn('只演算，不写入')?.addEventListener('click', async () => {
+    try {
+      const d = await api('/api/decay-preview');
+      const plan = d.plan || [];
+      if (!plan.length) return alert('这会儿没有要动的记忆。');
+      const lines = plan.slice(0, 20).map((p) => '· ' + (p.ringLabel || p.ring) + ' → ' + (RING_LABEL[p.to] || p.to));
+      alert('会有 ' + plan.length + ' 条要动（没写入）：\n\n' + lines.join('\n') + (plan.length > 20 ? '\n…还有 ' + (plan.length - 20) + ' 条' : ''));
+    } catch (e) {
+      alert('算不出来：' + e.message);
+    }
+  });
+
+  /** 相对时间：刚刚 / 3 分钟前 / 2 小时前 / 昨天 / 5 天前 / 具体日期 */
+  function relWhen(ts) {
+    if (!ts) return '';
+    const d = ts instanceof Date ? ts : new Date(Number(ts) || ts);
+    const v = d.getTime();
+    if (!Number.isFinite(v)) return '';
+    const diff = Date.now() - v;
+    const min = Math.floor(diff / 60000);
+    if (min < 1) return '刚刚';
+    if (min < 60) return min + ' 分钟前';
+    const hr = Math.floor(min / 60);
+    if (hr < 24) return hr + ' 小时前';
+    const day = Math.floor(hr / 24);
+    if (day === 1) return '昨天';
+    if (day < 30) return day + ' 天前';
+    return d.toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' });
+  }
+
+  const RING_LABEL = {
+    core: '圆心',
+    ring1: '一圈',
+    ring2: '二圈',
+    ring3: '三圈',
+    ring4: '闲聊圈',
+    ring5: '模糊圈',
+    recall: '回忆圈',
+  };
+
+  /** 搜索：把结果铺回表格 */
+  const searchBtn = findBtn('搜索');
+  if (searchBtn) {
+    const input = searchBtn.parentElement.querySelector('input[type="text"]');
+    const ringSel = searchBtn.parentElement.querySelector('select');
+    const table = searchBtn.closest('.card')?.querySelector('table');
+
+    const RING_BY_OPT = {
+      '全部圈': '',
+      '圆心': 'core',
+      '一圈': 'ring1',
+      '二圈': 'ring2',
+      '三圈': 'ring3',
+      '闲聊圈': 'ring4',
+      '模糊圈': 'ring5',
+      '回忆圈': 'recall',
+    };
+
+    const runSearch = async () => {
+      const q = (input?.value || '').trim();
+      const ring = RING_BY_OPT[(ringSel?.value || '').trim()] || '';
+      try {
+        let hits = await api(
+          '/api/search?q=' + encodeURIComponent(q) + '&limit=50' + (ring ? '&ring=' + ring : '')
+        );
+        if (Array.isArray(hits) === false) hits = [];
+        if (!table) return;
+        const head = table.querySelector('tr:first-child')?.outerHTML || '';
+        if (!hits.length) {
+          table.innerHTML = head + '<tr><td colspan="4" style="color:var(--dim)">没搜到</td></tr>';
+          return;
+        }
+        table.innerHTML =
+          head +
+          hits
+            .map((m) => {
+              const pts = m.points || [];
+              const vis = pts.filter((p) => p.visible).length;
+              const when = m.created_at ? new Date(m.created_at).toLocaleDateString('zh-CN') : '';
+              return (
+                '<tr><td>' + esc(String(m.content).slice(0, 60)) + '</td>' +
+                '<td><span class="pill">' + esc(m.ringLabel || RING_LABEL[m.ring] || m.ring) + '</span></td>' +
+                '<td class="num">' + vis + ' / ' + pts.length + '</td>' +
+                '<td>' + when + '</td></tr>'
+              );
+            })
+            .join('');
+      } catch (e) {
+        alert('搜不了：' + e.message);
+      }
+    };
+
+    searchBtn.addEventListener('click', runSearch);
+    input?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') runSearch();
+    });
+  }
+
+  /** 导出备份：下成一个 .db 文件 */
+  document.getElementById('btn-export')?.addEventListener('click', async (ev) => {
+    const b = ev.currentTarget;
+    const was = b.textContent;
+    b.disabled = true;
+    b.textContent = '打包…';
+    try {
+      const r = await fetch('/api/backup/export');
+      if (!r.ok) {
+        const j = await r.json().catch(() => null);
+        throw new Error(j?.error || '服务那边没给文件');
+      }
+      const blob = await r.blob();
+      const cd = r.headers.get('Content-Disposition') || '';
+      const m = /filename\*=UTF-8''([^;]+)/i.exec(cd) || /filename="?([^";]+)"?/i.exec(cd);
+      const fname = m ? decodeURIComponent(m[1]) : 'ringmind-backup.db';
+
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = fname;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+
+      await showAlert(
+        '备份好了',
+        '存成「' + fname + '」，' + Math.max(1, Math.round(blob.size / 1024)) + ' KB。\n\n浏览器默认放进「下载」文件夹。'
+      );
+    } catch (e) {
+      await showAlert('没导成', e.message);
+    } finally {
+      b.disabled = false;
+      b.textContent = was || '导出备份';
+    }
+  });
+
+  /** 从备份恢复：选文件 → 确认 → 整个换掉 */
+  const restoreFile = document.getElementById('restore-file');
+
+  document.getElementById('btn-restore')?.addEventListener('click', () => {
+    if (!restoreFile) return;
+    restoreFile.value = '';
+    restoreFile.click();
+  });
+
+  restoreFile?.addEventListener('change', async () => {
+    const f = restoreFile.files?.[0];
+    if (!f) return;
+
+    if (f.size > 60 * 1024 * 1024) {
+      await showAlert('文件太大了', '这个备份有 ' + Math.round(f.size / 1024 / 1024) + ' MB，超过 60 MB 读不进来。');
+      return;
+    }
+
+    const ok = await openModal(
+      '从备份恢复',
+      '会用「' + f.name + '」整个替换现在的库。\n\n现在的内容会先自动存一份在同一个文件夹里，文件名带「恢复前」，真出事了还能找回。',
+      { ok: '恢复', cancel: '算了', danger: true }
+    );
+    if (!ok) return;
+
+    const btn = document.getElementById('btn-restore');
+    const was = btn?.textContent;
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = '恢复中…';
+    }
+
+    try {
+      const b64 = await new Promise((res, rej) => {
+        const fr = new FileReader();
+        fr.onload = () => res(String(fr.result).split(',')[1] || '');
+        fr.onerror = () => rej(new Error('读不了这个文件'));
+        fr.readAsDataURL(f);
+      });
+
+      const r = await api('/api/backup/restore', { method: 'POST', body: JSON.stringify({ data: b64 }) });
+      await showAlert(
+        '恢复好了',
+        r.memories + ' 条记忆、' + r.points + ' 个点。\n\n原来的库留在：\n' + r.backup + '\n\n页面会刷新一下。'
+      );
+      location.reload();
+    } catch (e) {
+      await showAlert('没恢复成', e.message);
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = was || '从备份恢复';
+      }
+    }
+  });
+
+  /** 换存放位置：选文件夹 → 展开确认 → 整目录搬过去 */
+  let moveTarget = '';
+
+  const movePanel = document.getElementById('move-panel');
+
+  function closeMovePanel() {
+    moveTarget = '';
+    if (movePanel) movePanel.hidden = true;
+  }
+
+  document.getElementById('pick-folder')?.addEventListener('click', async (ev) => {
+    const b = ev.currentTarget;
+    b.disabled = true;
+    const was = b.textContent;
+    b.textContent = '等你选…';
+    try {
+      const r = await api('/api/pick-folder', { method: 'POST' });
+      if (!r.path) return; // 点了取消
+      moveTarget = r.path;
+      const inp2 = document.getElementById('db-path');
+      if (inp2) inp2.value = r.path;
+      const to = document.getElementById('move-to');
+      const files = document.getElementById('move-files');
+      if (to) to.textContent = r.path;
+      if (files) {
+        files.textContent =
+          '库 ' + (document.getElementById('db-name')?.textContent || '记忆库') +
+          '、登录令牌，以及该目录下其他存档';
+      }
+      if (movePanel) movePanel.hidden = false;
+    } catch (e) {
+      // 后台服务可能弹不出系统对话框；不弹 alert，让用户直接手打路径
+    } finally {
+      b.disabled = false;
+      b.textContent = was || '浏览…';
+    }
+  });
+
+  // ── 新建库 ────────────────────────────────────
+  const newDbDo = document.getElementById('new-db-do');
+  const newDbName = document.getElementById('new-db-name');
+  const newDbParent = document.getElementById('new-db-parent');
+
+  document.getElementById('new-db-pick')?.addEventListener('click', async () => {
+    const b = document.getElementById('new-db-pick');
+    if (!b) return;
+    b.disabled = true;
+    const was = b.textContent;
+    b.textContent = '等你选…';
+    try {
+      const r = await api('/api/pick-folder', { method: 'POST' });
+      if (r.path && newDbParent) newDbParent.value = r.path;
+    } catch {
+      /* 系统对话框弹不出来时不打扰，手打路径就行 */
+    } finally {
+      b.disabled = false;
+      b.textContent = was || '浏览…';
+    }
+  });
+
+  const doNewDb = async () => {
+    const name = (newDbName?.value || '').trim();
+    if (!name) {
+      newDbName?.focus();
+      return;
+    }
+    if (!newDbDo) return;
+    const parentDir = (newDbParent?.value || '').trim();
+
+    newDbDo.disabled = true;
+    const was = newDbDo.textContent;
+    newDbDo.textContent = '建…';
+
+    let r = null;
+    try {
+      r = await api('/api/new-db', {
+        method: 'POST',
+        body: JSON.stringify({ name, parentDir: parentDir || undefined }),
+      });
+    } catch (e) {
+      newDbDo.disabled = false;
+      newDbDo.textContent = was || '新建';
+      await showAlert('没建成', e.message);
+      return;
+    }
+
+    newDbDo.disabled = false;
+    newDbDo.textContent = was || '新建';
+    if (newDbName) newDbName.value = '';
+
+    await loadDbs();
+    await showAlert(
+      '新库建好了',
+      r.name + '\n\n' +
+        '位置：' + r.dbPath + '\n' +
+        '现在是空的（0 条记忆）。\n\n' +
+        '还没切过去。想切的话，在上面「切换到」里选一下，再点保存。'
+    );
+  };
+  newDbDo?.addEventListener('click', doNewDb);
+  newDbName?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') doNewDb();
+  });
+
+  // ── 切换库：选中 → 点保存才生效 ────────────────
+  const dbSwitch = document.getElementById('db-switch');
+  const dbSwitchSave = document.getElementById('db-switch-save');
+
+  dbSwitch?.addEventListener('change', () => {
+    if (!dbSwitchSave) return;
+    const picked = dbSwitch.value;
+    const cur = dbSwitch.dataset.current || '';
+    dbSwitchSave.disabled = !picked || picked === cur;
+  });
+
+  dbSwitchSave?.addEventListener('click', async () => {
+    const target = dbSwitch?.value;
+    if (!target) return;
+    const label = dbSwitch.options[dbSwitch.selectedIndex]?.textContent || target;
+
+    const ok = await showConfirm(
+      '切换记忆库',
+      '切到「' + label + '」？\n\n当前库的文件会原样留着，随时能切回来。'
+    );
+    if (!ok) return;
+
+    dbSwitchSave.disabled = true;
+    const was = dbSwitchSave.textContent;
+    dbSwitchSave.textContent = '切…';
+
+    let r = null;
+    try {
+      r = await api('/api/switch-db', { method: 'POST', body: JSON.stringify({ path: target }) });
+    } catch (e) {
+      dbSwitchSave.textContent = was || '保存';
+      dbSwitchSave.disabled = false;
+      await showAlert('没切成', e.message);
+      return;
+    }
+
+    await showAlert(
+      '切好了',
+      r.name + '\n' + r.memories + ' 条记忆、' + r.points + ' 个点。\n\n页面会刷新一下。'
+    );
+    location.reload();
+  });
+
+  // 手打路径也能触发确认区：每次按键都刷新
+  document.getElementById('db-path')?.addEventListener('keyup', () => {
+    const v = document.getElementById('db-path')?.value?.trim();
+    if (!v) return;
+    moveTarget = v;
+    const to = document.getElementById('move-to');
+    const files = document.getElementById('move-files');
+    if (to) to.textContent = v;
+    if (files) {
+      files.textContent =
+        '库 ' + (document.getElementById('db-name')?.textContent || '记忆库') +
+        '、登录令牌，以及该目录下其他存档';
+    }
+    if (movePanel) movePanel.hidden = false;
+  });
+  document.getElementById('move-cancel')?.addEventListener('click', () => {
+    closeMovePanel();
+    const s = document.querySelector('.savebar .status');
+    if (s) s.textContent = '';
+  });
+
+  document.getElementById('move-do')?.addEventListener('click', async (ev) => {
+    const target = moveTarget || (document.getElementById('db-path')?.value || '').trim();
+      if (!target) return;
+    const b = ev.currentTarget;
+    b.disabled = true;
+    const was = b.textContent;
+    b.textContent = '正在搬…';
+    try {
+      const r = await api('/api/move-data', { method: 'POST', body: JSON.stringify({ dir: target }) });
+      const inp = document.getElementById('db-path');
+      if (inp) inp.value = r.dbPath || r.to;
+      closeMovePanel();
+      const s = document.querySelector('.savebar .status');
+      if (s) {
+        s.textContent =
+          '已搬到 ' + r.to + '，核对 ' + r.verified + ' 项全过，原位置已清空';
+        s.classList.remove('dirty');
+      }
+      const keptNote = Array.isArray(r.kept) && r.kept.length
+        ? '\n没删掉的：' + r.kept.map((x) => x.name).join('、') + '（可能被占用，手动删一下）'
+        : '';
+      alert(
+        '搬好了。\n\n新位置：' + r.dbPath +
+        '\n文件：' + r.files + ' 个，大小和哈希逐个核对过' +
+        '\n数据：核对了 ' + r.verified + ' 项，' + r.memories + ' 条记忆、' + r.points + ' 个点' +
+        '\n原位置：' + (r.removed && r.removed.length ? '已删除 ' + r.removed.join('、') : '本来就空') +
+        keptNote
+      );
+    } catch (e) {
+      alert('没搬成：' + e.message + '\n\n原来的数据没动，位置也没变。');
+    } finally {
+      b.disabled = false;
+      b.textContent = was || '搬过去';
+    }
+  });
+
+  /** 列表里点「删除」：只删不在用的库，说清楚删的是整个文件夹 */
+  document.addEventListener('click', async (e) => {
+    const btn = e.target.closest && e.target.closest('.db-del');
+    if (!btn) return;
+    e.preventDefault();
+
+    const name = btn.dataset.del || '';
+    const db = btn.dataset.db || '';
+    if (!name) return;
+
+    const ok = await openModal(
+      '删除「' + name + '」',
+      '会把整个库文件夹一起删掉 —— 库文件、令牌文件、里面所有东西。\n\n' +
+        '这一步做完不能撤销。想留底，请先切过去，用「导出备份」存一份。\n\n确定吗？',
+      { ok: '删除', cancel: '算了', danger: true }
+    );
+    if (!ok) return;
+
+    const was = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = '删除中…';
+    try {
+      const r = await api('/api/library-delete', {
+        method: 'POST',
+        body: JSON.stringify({ name, db }),
+      });
+      await showAlert('删掉了', '「' + r.name + '」已经删除。');
+      if (typeof loadDbs === 'function') await loadDbs();
+      else location.reload();
+    } catch (err) {
+      await showAlert('没删成', err.message);
+      btn.disabled = false;
+      btn.textContent = was || '删除';
+    }
+  });
+
+  document.querySelectorAll('input, select').forEach((el) => {
+    el.addEventListener('change', markDirty);
+  });
+
+  // ── 读真实数据 ──────────────────────────────────────────
+  (async () => {
+    const text = document.getElementById('demo-text');
+    const banner = document.getElementById('demo-banner');
+
+    /** 拉总览；401 就是没登录，直接回登录页 */
+    async function loadOverview() {
+      return fetch('/api/overview');
+    }
+
+    try {
+      const r = await loadOverview();
+      if (r.status === 401) {
+        location.replace('login.html');
+        return;
+      }
+      const { data } = await r.json();
+
+      // 把配置填进控件（天数、容量、百分比）
+      try {
+        const cfg = await api('/api/config');
+        fillControls(cfg);
+        fillMode(cfg.mode);
+      } catch {}
+
+      // 图例：每圈现在有几条
+      for (const row of document.querySelectorAll('.legend-row[data-ring]')) {
+        const id = row.dataset.ring;
+        const num = row.querySelector('.num');
+        if (!num) continue;
+        if (id === 'vault') {
+          num.textContent = Number(data.vault || 0).toLocaleString();
+        } else {
+          const ring = data.rings.find((x) => x.id === id);
+          num.textContent = Number(ring?.total || 0).toLocaleString();
+          if (ring && ring.cap) num.title = '容量 ' + ring.cap;
+        }
+      }
+
+      // 环形图：哪个圈有东西就点亮一点
+      const maxTotal = Math.max(1, ...data.rings.map((x) => x.total || 0));
+      for (const c of document.querySelectorAll('.ring-svg circle[data-ring]')) {
+        const ring = data.rings.find((x) => x.id === c.dataset.ring);
+        const n = ring?.total || 0;
+        const base = Number(c.getAttribute('opacity') || 0.6);
+        c.setAttribute('opacity', n === 0 ? Math.min(base, 0.16) : base);
+      }
+
+      if (text) {
+        text.textContent =
+          `已接上记忆库 · ${data.name || '未命名'} · ${data.modeLabel} · ` +
+          `共 ${data.rings.reduce((s, x) => s + (x.total || 0), 0).toLocaleString()} 条`;
+      }
+      if (banner) {
+        banner.classList.remove('info');
+        banner.classList.add('ok');
+      }
+
+      // ══════ 把页面上的假数字换成真的 ══════
+      const put = (id, v) => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = v;
+      };
+      const num = (n) => Number(n || 0).toLocaleString();
+      /** 字节数 → 人看的单位；不到 1MB 别显示成 0.0 MB */
+      const fmtBytes = (b) => {
+        if (!b) return '—';
+        if (b < 1024) return b + ' B';
+        if (b < 1024 * 1024) return (b / 1024).toFixed(1) + ' KB';
+        return (b / 1024 / 1024).toFixed(1) + ' MB';
+      };
+
+      loadDbs();
+      loadTokenUsage();
+
+      document.getElementById('token-refresh')?.addEventListener('click', () => {
+        const cur = document.querySelector('#token-range .tag.active');
+        loadTokenUsage(Number(cur?.dataset.hours) || 0);
+      });
+
+      // 时间范围切换
+      document.querySelectorAll('#token-range .tag').forEach((b) => {
+        b.addEventListener('click', () => {
+          if (b.classList.contains('active')) return;
+          loadTokenUsage(Number(b.dataset.hours) || 0);
+        });
+      });
+
+      const [st, cfg2, modes, recent] = await Promise.all([
+        api('/api/stats').catch(() => null),
+        api('/api/config').catch(() => null),
+        api('/api/modes').catch(() => null),
+        api('/api/recent').catch(() => null),
+      ]);
+
+      const coreCap = data.rings.find((r) => r.id === 'core')?.cap;
+
+      if (st) {
+        put('s-mode', data.modeLabel || '—');
+        put('s-remembered', st.remembered ? st.remembered + ' 件' : '0 件');
+        put('s-forgotten', st.forgotten ? st.forgotten + ' 件' : '0 件');
+        put('s-pinned', coreCap ? st.pinned + ' / ' + coreCap : String(st.pinned));
+        put('d-memories', num(st.memories));
+        put('d-points', num(st.points) + (st.pointsGone ? `（看不见 ${num(st.pointsGone)}）` : ''));
+        put('d-bytes', fmtBytes(st.bytes));
+        put(
+          'd-earliest',
+          st.earliest ? new Date(st.earliest).toLocaleDateString('zh-CN') : '还没有'
+        );
+        put('last-applied', st.lastDecay ? st.lastDecay.applied + ' 条' : '还没跑过');
+        put(
+          'last-at',
+          st.lastDecay ? new Date(st.lastDecay.at).toLocaleString('zh-CN', { hour12: false }) : '还没跑过'
+        );
+        put('last-demoted', st.demoted + ' 件');
+        put('last-forgotten', st.forgotten + ' 件');
+        put('last-result', st.lastDecay ? '成功' : '—');
+      }
+      put('d-vault', num(data.vault));
+
+      // 下次整理什么时候
+      if (cfg2) {
+        const hh = String(cfg2.compaction.hour).padStart(2, '0');
+        const mm = String(cfg2.compaction.minute).padStart(2, '0');
+        put('s-next', cfg2.compaction.enabled ? '明天 ' + hh + ':' + mm : '已关掉');
+        const t = document.getElementById('compaction-time');
+        if (t) t.value = hh + ':' + mm;
+        const p = document.getElementById('db-path');
+        if (p && document.activeElement !== p && data.dir) p.value = data.dir;
+        const ds = document.getElementById('db-name');
+        if (ds && data.name) ds.textContent = data.name;
+        const cdn = document.getElementById('cur-db-name');
+        if (cdn) cdn.textContent = data.name || '记忆库';
+        // 开关：只有真的接了字段的才响应
+        for (const sw of document.querySelectorAll('.switch[data-cfg]')) {
+          const v = cfg2;
+          const val = sw.dataset.cfg.split('.').reduce((o, k) => (o == null ? o : o[k]), v);
+          sw.classList.toggle('on', val !== false);
+        }
+      }
+
+      // 最近记下的
+      const rt = document.getElementById('recent-table');
+      if (rt && Array.isArray(recent)) {
+        const head = rt.querySelector('tr:first-child')?.outerHTML || '';
+        rt.innerHTML =
+          head +
+          (recent.length
+            ? recent
+                .map(
+                  (m) =>
+                    '<tr><td>' +
+                    esc(String(m.content).slice(0, 28)) +
+                    '</td><td class="nowrap"><span class="pill">' +
+                    esc(m.ringLabel) +
+                    '</span></td><td class="num" title="' +
+                    (m.created_at ? new Date(m.created_at).toLocaleString('zh-CN') : '') +
+                    '">' +
+                    relWhen(m.created_at) +
+                    '</td></tr>'
+                )
+                .join('')
+            : '<tr><td colspan="3" style="color:var(--dim)">库里还没有记忆</td></tr>');
+      }
+
+      // 模式：把选中那档的数值铺成条
+      MODES_CACHE = modes;
+      renderModeFacts(selectedMode || data.mode);
+
+      // 记忆浏览：默认铺最近 8 条
+      const bt = document.getElementById('browse-table');
+      if (bt && Array.isArray(recent)) {
+        const head = bt.querySelector('tr:first-child')?.outerHTML || '';
+        bt.innerHTML =
+          head +
+          (recent.length
+            ? recent
+                .map((m) => {
+                  const when = m.created_at
+                    ? new Date(m.created_at).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' })
+                    : '';
+                  return (
+                    '<tr><td>' + esc(String(m.content).slice(0, 34)) + '</td>' +
+                    '<td class="nowrap"><span class="pill">' + esc(m.ringLabel) + '</span></td>' +
+                    '<td class="num" title="还剩 ' + m.visible + ' / ' + m.points + ' 个点">' +
+                    (m.points > 0 ? Math.round((m.visible / m.points) * 100) : 0) + '%</td>' +
+                    '<td class="muted">' + when + '</td></tr>'
+                  );
+                })
+                .join('')
+            : '<tr><td colspan="4" style="color:var(--dim)">库里还没有记忆</td></tr>');
+      }
+
+      // 各圈容量：横排卡片
+      const ct = document.getElementById('ring-cap-row');
+      if (ct && Array.isArray(data.rings)) {
+        ct.innerHTML =
+          data.rings
+            .map((r) => {
+              const cap = r.cap == null ? '∞' : r.cap;
+              const cur = r.total == null ? 0 : r.total;
+              const full = r.cap != null && r.cap > 0 && cur >= r.cap;
+              const when = r.days == null ? '一直在' : r.days + ' 天';
+              const pct = r.cap != null && r.cap > 0 ? Math.min(100, Math.round((cur / r.cap) * 100)) : 0;
+              return (
+                '<div class="cap-cell' + (full ? ' full' : '') + '" title="' + esc(r.desc || '') + '">' +
+                '<div class="cap-name">' + esc(r.label) + '</div>' +
+                '<div class="cap-num"><b>' + cur + '</b><span> / ' + cap + '</span></div>' +
+                '<div class="cap-bar"><i style="width:' + pct + '%"></i></div>' +
+                '<div class="cap-when">' + when + '</div>' +
+                '</div>'
+              );
+            })
+            .join('');
+      }
+
+      // 连接状态：OneBot / QQ / 记忆库 / 其他
+      const fmtSec = (n) => {
+        if (n == null) return '—';
+        const s = Math.floor(n);
+        if (s < 60) return s + ' 秒';
+        if (s < 3600) return Math.floor(s / 60) + ' 分钟';
+        return Math.floor(s / 3600) + ' 时 ' + Math.floor((s % 3600) / 60) + ' 分';
+      };
+
+      const setSvc = (key, cls, main, sub) => {
+        const card = document.getElementById('svc-' + key);
+        if (card) card.className = 'stat' + (cls ? ' ' + cls : '');
+        put('v-' + key, main);
+        put('s-' + key, sub);
+      };
+
+      const renderHealth = (hh) => {
+        if (!hh) return;
+        const ob = hh.onebot || {};
+        const qq = hh.qq;
+        const db = hh.db || {};
+        const sv = hh.server || {};
+
+        // 面板自己
+        setSvc('server', 'ok', '运行中', (sv.host || '') + ':' + (sv.port || '') + ' · ' + (sv.node || ''));
+
+        if (qq) setSvc('onebot', 'ok', '已连接', ob.app ? ob.app + ' ' + (ob.version || '') : ob.url || '');
+        else if (ob.reachable && !ob.authorized) setSvc('onebot', 'warn', '401', '端口通，令牌不对');
+        else if (!ob.reachable) setSvc('onebot', 'bad', '连不上', ob.error || '没响应');
+        else setSvc('onebot', 'warn', '有响应', '但没拿到登录信息');
+
+        if (qq) setSvc('qq', 'ok', qq.nickname || '未命名', qq.userId || '');
+        else setSvc('qq', 'bad', '离线', '拿不到账号');
+
+        if (db.ok) {
+          setSvc('db', 'ok', (db.memories || 0) + ' 条记忆', (db.points || 0) + ' 个点 · ' + fmtBytes(db.bytes));
+        } else {
+          setSvc('db', 'bad', '打不开', '');
+        }
+
+        const dot = document.getElementById('hero-dot');
+        const title = document.getElementById('hero-title');
+        const sub = document.getElementById('hero-sub');
+        const allOk = Boolean(qq) && db.ok;
+        const someOk = Boolean(qq) || db.ok;
+
+        if (dot) dot.className = 'hero-dot' + (allOk ? '' : someOk ? ' warn' : ' bad');
+        if (title) title.textContent = allOk ? '全部连通' : someOk ? '部分连通' : '连不上';
+        if (sub) {
+          if (allOk) sub.textContent = 'QQ ' + qq.nickname + '（' + qq.userId + '）在线，记忆库正常';
+          else if (qq) sub.textContent = 'QQ 通了，但记忆库有问题';
+          else if (ob.reachable && !ob.authorized) sub.textContent = 'OneBot 端口通，令牌不对 —— 展开下面填一次';
+          else if (!ob.reachable) sub.textContent = 'OneBot 没响应，确认网关开着、地址填对';
+          else sub.textContent = 'OneBot 有响应，但没拿到登录信息';
+        }
+
+        // 横条右边的四个小读数
+        put('hf-port', String(sv.port ?? '—'));
+        put('hf-uptime', fmtSec(sv.runningSec) || '—');
+        put('hf-gw', ob.online ? '在线' : ob.reachable ? '有响应' : '断开');
+        put('hf-check', new Date().toLocaleTimeString('zh-CN', { hour12: false, hour: '2-digit', minute: '2-digit' }));
+
+        // 网关细节：地址、令牌、状态，令牌可当场改
+        const gd = document.getElementById('gw-detail');
+        if (gd) {
+          /** 一条：标签 / 值 / 可选「改」 */
+          const row = (k, v, editKey) => {
+            const btn = editKey
+              ? '<button class="mini-edit" data-edit="' + editKey + '" type="button">改</button>'
+              : '';
+            return (
+              '<div class="meta-row"><span class="meta-k">' + esc(k) +
+              '</span><span class="meta-v">' + esc(String(v ?? '—')) + '</span>' + btn + '</div>'
+            );
+          };
+          const rows = [];
+          rows.push(row('面板地址', sv.url || ('http://' + sv.host + ':' + sv.port)));
+          rows.push(row('面板令牌', sv.token || '—', 'panel'));
+          rows.push(row('OneBot 地址', ob.url || '—', 'onebot-url'));
+          rows.push(row('OneBot 令牌', ob.token || '—', 'onebot-token'));
+          if (ob.app) rows.push(row('协议端', ob.app + ' ' + (ob.version || '')));
+          if (ob.uptime != null) rows.push(row('已运行', fmtSec(ob.uptime)));
+          if (ob.online != null) rows.push(row('在线', ob.online ? '是' : '否'));
+          rows.push(row('记忆库', db.path || '—'));
+          if (!ob.reachable) rows.push(row('错误', ob.error || '没响应'));
+          else if (!ob.authorized) rows.push(row('错误', '令牌不对（401）'));
+          else if (!qq) rows.push(row('错误', '没拿到登录信息'));
+          gd.innerHTML = rows.join('');
+
+          // 改令牌 / 改地址
+          gd.querySelectorAll('[data-edit]').forEach((b) => {
+            b.addEventListener('click', async () => {
+              const kind = b.dataset.edit;
+              if (kind === 'panel') {
+                const v = await openModal(
+                  '换面板登录令牌',
+                  '留空 = 随机生成一串新的。改完当前登录会失效，要用新令牌重新登录。',
+                  { ok: '换', cancel: '取消', input: true, placeholder: '留空=随机生成' }
+                );
+                if (v === null) return;
+                try {
+                  await fetch('/api/panel-token', {
+                    method: 'POST',
+                    headers: { 'content-type': 'application/json' },
+                    body: JSON.stringify({ token: v }),
+                  }).then((r) => r.json()).then((j) => {
+                    if (!j.ok) throw new Error(j.error || '失败');
+                  });
+                  alert('改好了。当前登录会失效，请用新令牌重新登录。');
+                  location.replace('login.html');
+                } catch (e) {
+                  alert('没改成：' + e.message);
+                }
+                return;
+              }
+              if (kind === 'onebot-url') {
+                const v = await openModal(
+                  'OneBot 地址',
+                  '形如 http://127.0.0.1:3000',
+                  { ok: '保存', cancel: '取消', input: true, placeholder: 'http://127.0.0.1:3000', value: ob.url || '' }
+                );
+                if (v === null) return;
+                try {
+                  // 只改地址，令牌不动（后端看到没传 token 就保留原值）
+                  await fetch('/api/onebot', {
+                    method: 'POST',
+                    headers: { 'content-type': 'application/json' },
+                    body: JSON.stringify({ url: v }),
+                  });
+                  renderHealth(await api('/api/health'));
+                } catch (e) { alert('没改成：' + e.message); }
+                return;
+              }
+              if (kind === 'onebot-token') {
+                const v = await openModal(
+                  'OneBot 令牌',
+                  '留空 = 不用令牌（对方没设鉴权时才这么填）。',
+                  { ok: '保存', cancel: '取消', input: true, placeholder: '留空=不用令牌' }
+                );
+                if (v === null) return;
+                try {
+                  await fetch('/api/onebot', {
+                    method: 'POST',
+                    headers: { 'content-type': 'application/json' },
+                    body: JSON.stringify({ url: ob.url, token: v }),
+                  });
+                  renderHealth(await api('/api/health'));
+                } catch (e) { alert('没改成：' + e.message); }
+              }
+            });
+          });
+        }
+
+        // 其他服务
+        const ot = document.getElementById('h-others');
+        if (ot && Array.isArray(hh.others)) {
+          ot.innerHTML = hh.others
+            .map(
+              (s) =>
+                '<div class="other-row"><span class="other-name">' +
+                esc(s.name) +
+                '</span>' +
+                (s.ok
+                  ? '<span class="pill ok">已连上</span>'
+                  : '<span class="muted">' + esc(s.note || '没接') + '</span>') +
+                '</div>'
+            )
+            .join('');
+        }
+      };
+
+      const hh = await api('/api/health').catch(() => null);
+      const uEl = document.getElementById('ob-url');
+      if (uEl && !uEl.value) uEl.value = hh?.onebot?.url || 'http://127.0.0.1:3000';
+      renderHealth(hh);
+
+      // 重新检测
+      document.getElementById('health-refresh')?.addEventListener('click', async (ev) => {
+        const b = ev.currentTarget;
+        b.disabled = true;
+        b.textContent = '检测中…';
+        try {
+          renderHealth(await api('/api/health'));
+        } catch {}
+        b.disabled = false;
+        b.textContent = '重新检测';
+      });
+
+      // 测试并保存 OneBot 配置
+      document.getElementById('ob-test')?.addEventListener('click', async (ev) => {
+        const b = ev.currentTarget;
+        const res = document.getElementById('ob-result');
+        const url = document.getElementById('ob-url')?.value?.trim() || '';
+        const token = document.getElementById('ob-token')?.value?.trim() || '';
+        b.disabled = true;
+        if (res) res.textContent = '测…';
+        try {
+          await api('/api/onebot', { method: 'POST', body: JSON.stringify({ url, token }) });
+          const h2 = await api('/api/health');
+          renderHealth(h2);
+          if (res) {
+            res.textContent = h2.qq
+              ? '通了：' + h2.qq.nickname + '（' + h2.qq.userId + '）'
+              : h2.onebot?.reachable
+                ? '端口通，令牌不对'
+                : '连不上：' + (h2.onebot?.error || '没响应');
+          }
+        } catch (e) {
+          if (res) res.textContent = '失败：' + e.message;
+        } finally {
+          b.disabled = false;
+        }
+      });
+    } catch (e) {
+      if (text) text.textContent = '读不到记忆库：' + (e?.message || e);
+    }
+  })();
+</script>
+
+
+  <!-- 左下角：有新版本才出现 -->
+  <div class="updater" id="updater" hidden>
+    <div class="updater-head">
+      <span class="updater-dot"></span>
+      <span class="updater-title" id="updater-title">有新版本</span>
+    </div>
+    <div class="updater-body" id="updater-body">正在检查…</div>
+    <div class="updater-btns">
+      <button class="btn primary" id="updater-do" type="button">更新</button>
+      <button class="btn" id="updater-later" type="button">以后</button>
+    </div>
+  </div>
+
+  <!-- 统一弹窗（替代浏览器 alert / confirm） -->
+  <div class="modal-mask" id="modal-mask" hidden>
+    <div class="modal" role="dialog" aria-modal="true">
+      <div class="modal-title" id="modal-title">提示</div>
+      <div class="modal-body" id="modal-body"></div>
+      <div class="modal-btns">
+        <button class="btn" id="modal-cancel" type="button">取消</button>
+        <button class="btn primary" id="modal-ok" type="button">好的</button>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

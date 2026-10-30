@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>环形的心 · 登录</title>
+<style>
+  :root {
+    --text:  #eef2f8;
+    --dim:   rgba(238,242,248,.58);
+    --faint: rgba(238,242,248,.34);
+    --accent: #7fb0ff;
+    --danger: #ff8b8b;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body { height: 100%; }
+
+  body {
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", "PingFang SC", sans-serif;
+    font-size: 14px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+    background: #060a12;
+    overflow: hidden;
+  }
+
+  /* ── 背景：素色渐变，色相差很小 ────────────── */
+  .bg {
+    position: fixed;
+    inset: 0;
+    z-index: -3;
+    background:
+      radial-gradient(ellipse 78% 58% at 16% 8%,  rgba(104,126,176,.075), transparent 64%),
+      radial-gradient(ellipse 72% 56% at 84% 12%, rgba(126,110,170,.065), transparent 66%),
+      radial-gradient(ellipse 96% 72% at 50% 104%, rgba(58,80,126,.095), transparent 72%),
+      linear-gradient(168deg, #0a0d15 0%, #0b0f18 38%, #090c13 72%, #0a0d14 100%);
+  }
+
+  .bg::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(ellipse 62% 50% at 50% 34%, rgba(150,172,214,.045), transparent 72%);
+    animation: breathe 26s ease-in-out infinite alternate;
+  }
+
+  @keyframes breathe {
+    from { opacity: .65; }
+    to   { opacity: 1; }
+  }
+
+  /* ── 同心圆环：一圈套一圈，慢慢呼吸 ─────── */
+  .rings {
+    position: fixed;
+    inset: 0;
+    /* 在压暗层(.veil)之上，才不被打薄 */
+    z-index: -1;
+    pointer-events: none;
+    display: grid;
+    place-items: center;
+  }
+
+  .rings i {
+    position: absolute;
+    border-radius: 50%;
+    border: 1px solid rgba(127,176,255,.18);
+    animation: ringPulse 13s ease-in-out infinite;
+  }
+
+  .rings i:nth-child(1) { width: 66vmin;  height: 66vmin;  animation-delay: 0s; }
+  .rings i:nth-child(2) { width: 80vmin;  height: 80vmin;  animation-delay: -3.2s; }
+  .rings i:nth-child(3) { width: 94vmin;  height: 94vmin;  animation-delay: -6.5s; }
+  .rings i:nth-child(4) { width: 108vmin; height: 108vmin; animation-delay: -9.8s; }
+
+  @keyframes ringPulse {
+    0%, 100% { opacity: .55; transform: scale(1); }
+    50%      { opacity: .95; transform: scale(1.035); }
+  }
+
+  /* ── 记忆碎片：几段想不起来的句子，慢慢往上飘 ── */
+  .memories {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    overflow: hidden;
+  }
+
+  .memories span {
+    position: absolute;
+    white-space: nowrap;
+    font-size: 12px;
+    letter-spacing: .2px;
+    color: rgba(168,198,246,.32);
+    animation: drift linear infinite;
+    will-change: transform, opacity;
+  }
+
+  @keyframes drift {
+    0%   { opacity: 0; transform: translate3d(0, 0, 0); }
+    12%  { opacity: 1; }
+    82%  { opacity: .75; }
+    100% { opacity: 0; transform: translate3d(18px, -190px, 0); }
+  }
+
+  /* ── 压暗：中间留亮，四周压暗 ────────────── */
+  .veil {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background:
+      radial-gradient(ellipse 66% 74% at 50% 44%, rgba(6,10,18,.10) 0%, rgba(6,10,18,.40) 60%, rgba(6,10,18,.66) 100%);
+  }
+
+  /* ── 登录卡片 ───────────────────────────── */
+  .card {
+    position: relative;
+    width: min(372px, 100%);
+    padding: 32px 30px 26px;
+    border-radius: 22px;
+    background: rgba(11,17,29,.74);
+    backdrop-filter: blur(30px) saturate(155%);
+    -webkit-backdrop-filter: blur(30px) saturate(155%);
+    border: 1px solid rgba(255,255,255,.10);
+    box-shadow:
+      0 30px 90px rgba(0,0,0,.62),
+      inset 0 1px 0 rgba(255,255,255,.07);
+    animation: rise .55s cubic-bezier(.16,1,.3,1) both;
+  }
+
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(16px) scale(.985); }
+    to   { opacity: 1; transform: none; }
+  }
+
+  /* 卡片顶部的一道柔光 */
+  .card::before {
+    content: "";
+    position: absolute;
+    top: -1px; left: 18%; right: 18%;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(127,176,255,.75), transparent);
+  }
+
+  /* ── 标志 ───────────────────────────────── */
+  .logo {
+    width: 54px;
+    height: 54px;
+    margin: 0 auto 15px;
+    animation: spin 40s linear infinite;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  .logo svg { width: 100%; height: 100%; display: block; }
+
+  /* ── 文案 ───────────────────────────────── */
+  .ver {
+    font-size: 11.5px;
+    font-weight: 400;
+    color: var(--faint);
+    letter-spacing: .6px;
+    margin-left: 7px;
+    vertical-align: 3px;
+  }
+
+  h1 {
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: 1.2px;
+    text-align: center;
+    margin-bottom: 5px;
+  }
+
+  .sub {
+    text-align: center;
+    color: var(--dim);
+    font-size: 12px;
+    margin-bottom: 26px;
+    letter-spacing: .3px;
+  }
+
+  /* ── 表单 ───────────────────────────────── */
+  .field { margin-bottom: 16px; }
+
+  label {
+    display: block;
+    font-size: 12px;
+    color: var(--dim);
+    margin-bottom: 7px;
+    letter-spacing: .4px;
+  }
+
+  .input-wrap { position: relative; }
+
+  input {
+    width: 100%;
+    height: 47px;
+    padding: 0 46px 0 15px;
+    background: rgba(255,255,255,.045);
+    border: 1px solid rgba(255,255,255,.10);
+    border-radius: 12px;
+    color: var(--text);
+    font-size: 14px;
+    font-family: inherit;
+    letter-spacing: .5px;
+    outline: none;
+    transition: border-color .18s, background .18s, box-shadow .18s;
+  }
+
+  input::placeholder { color: var(--faint); letter-spacing: 0; }
+
+  input:focus {
+    border-color: rgba(127,176,255,.62);
+    background: rgba(127,176,255,.06);
+    box-shadow: 0 0 0 4px rgba(127,176,255,.10);
+  }
+
+  input:disabled { opacity: .5; cursor: not-allowed; }
+
+  /* 显示/隐藏令牌 */
+  .eye {
+    position: absolute;
+    top: 50%;
+    right: 6px;
+    transform: translateY(-50%);
+    width: 36px;
+    height: 36px;
+    display: grid;
+    place-items: center;
+    border: none;
+    background: transparent;
+    color: var(--faint);
+    font-size: 15px;
+    cursor: pointer;
+    border-radius: 9px;
+    transition: color .15s, background .15s;
+  }
+
+  .eye:hover { color: var(--dim); background: rgba(255,255,255,.05); }
+
+  /* ── 登录按钮 ───────────────────────────── */
+  .btn {
+    width: 100%;
+    height: 46px;
+    margin-top: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    border: none;
+    border-radius: 12px;
+    background: linear-gradient(180deg, #83b4ff 0%, #5a92e6 100%);
+    color: #06101f;
+    font-size: 14.5px;
+    font-weight: 600;
+    font-family: inherit;
+    letter-spacing: .8px;
+    cursor: pointer;
+    box-shadow: 0 8px 26px rgba(90,146,230,.32);
+    transition: transform .12s, box-shadow .18s, filter .18s;
+  }
+
+  .btn:hover { filter: brightness(1.07); box-shadow: 0 10px 32px rgba(90,146,230,.42); }
+  .btn:active { transform: scale(.985); }
+  .btn:disabled { filter: grayscale(.4) brightness(.8); cursor: not-allowed; }
+
+  .arrow { transition: transform .18s ease; }
+  .btn:hover .arrow { transform: translateX(3px); }
+
+  /* ── 错误提示 ───────────────────────────── */
+  .err {
+    display: none;
+    align-items: center;
+    gap: 7px;
+    margin-top: 12px;
+    padding: 10px 13px;
+    border-radius: 9px;
+    background: rgba(255,139,139,.09);
+    border: 1px solid rgba(255,139,139,.26);
+    color: var(--danger);
+    font-size: 12.5px;
+    animation: shake .4s;
+  }
+
+  .err.show { display: flex; }
+
+  @keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    22% { transform: translateX(-6px); }
+    44% { transform: translateX(6px); }
+    66% { transform: translateX(-3px); }
+    88% { transform: translateX(3px); }
+  }
+
+  /* ── 底部提示 ───────────────────────────── */
+  .foot {
+    margin-top: 26px;
+    padding-top: 18px;
+    border-top: 1px solid rgba(255,255,255,.07);
+    font-size: 11.5px;
+    color: var(--faint);
+    line-height: 1.8;
+    text-align: center;
+  }
+
+  .foot code {
+    padding: 1px 6px;
+    border-radius: 5px;
+    background: rgba(255,255,255,.06);
+    font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+    font-size: 11px;
+    color: var(--dim);
+  }
+
+  @media (max-width: 480px) {
+    .card { padding: 32px 24px 24px; border-radius: 18px; }
+    h1 { font-size: 20px; }
+    .logo { width: 52px; height: 52px; margin-bottom: 16px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<div class="bg"></div>
+
+<div class="veil"></div>
+
+<!-- 同心圆环：呼应"环形的心"（在压暗层之上，才看得见） -->
+<div class="rings" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+
+<!-- 飘过的记忆碎片 -->
+<div class="memories" id="memories" aria-hidden="true"></div>
+
+<div class="card">
+  <div class="logo">
+    <svg viewBox="0 0 100 100" fill="none">
+      <circle cx="50" cy="50" r="46" stroke="rgba(127,176,255,.18)" stroke-width="1"/>
+      <circle cx="50" cy="50" r="37" fill="#2f5488" opacity=".55"/>
+      <circle cx="50" cy="50" r="29" fill="#4a7fd4" opacity=".70"/>
+      <circle cx="50" cy="50" r="21" fill="#6fa8ff" opacity=".82"/>
+      <circle cx="50" cy="50" r="13" fill="#b98cff" opacity=".90"/>
+      <circle cx="50" cy="50" r="6"  fill="#ffd479"/>
+      <circle cx="50" cy="50" r="46" stroke="url(#g)" stroke-width="1.5" opacity=".8"/>
+      <defs>
+        <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="#7fb0ff" stop-opacity=".9"/>
+          <stop offset="100%" stop-color="#b98cff" stop-opacity=".1"/>
+        </linearGradient>
+      </defs>
+    </svg>
+  </div>
+
+  <h1>环形的心<span class="ver">v1.0.1</span></h1>
+  <p class="sub">一个会遗忘的记忆库 · 令牌登录</p>
+
+  <form id="form" autocomplete="off">
+    <div class="field">
+      <label for="token">访问令牌</label>
+      <div class="input-wrap">
+        <input id="token" type="password"
+               autocomplete="current-password" spellcheck="false" autofocus>
+        <button type="button" class="eye" id="eye" aria-label="显示令牌">◉</button>
+      </div>
+    </div>
+
+    <div class="err" id="err"><span>✕</span><span id="errText">令牌不对</span></div>
+
+    <button type="submit" class="btn" id="submit">
+      进入面板<span class="arrow">→</span>
+    </button>
+  </form>
+</div>
+
+<script>
+  // 背景里飘过的记忆碎片 —— 都是"想不起来"的那种
+  (() => {
+    const bits = [
+      '那天很开心，但忘了是谁',
+      '下午跟老爹出门，看见一辆黄色的车',
+      '说过三遍"我在"',
+      '下雨，屋檐底下的糖炒栗子',
+      '这条已经想不清了',
+      '笑的时候眼角有纹',
+      '忘了为什么哭',
+      '答应过的事，只记得一半',
+      '第一次叫我名字那天',
+      '风很大，头发挡住眼睛',
+      '像隔着毛玻璃',
+      '想不起来了，只剩一个影子'
+    ];
+
+    const host = document.getElementById('memories');
+    if (!host) return;
+
+    for (let i = 0; i < bits.length; i++) {
+      const s = document.createElement('span');
+      s.textContent = bits[i];
+      s.style.left = (3 + Math.random() * 90) + '%';
+      s.style.top = (28 + Math.random() * 70) + '%';
+      s.style.fontSize = (10.5 + Math.random() * 3) + 'px';
+      s.style.animationDuration = (17 + Math.random() * 13) + 's';
+      s.style.animationDelay = '-' + (Math.random() * 26).toFixed(1) + 's';
+      host.appendChild(s);
+    }
+  })();
+
+  const form = document.getElementById('form');
+  const tokenEl = document.getElementById('token');
+  const eye = document.getElementById('eye');
+  const err = document.getElementById('err');
+  const errText = document.getElementById('errText');
+  const submit = document.getElementById('submit');
+
+  // 显示 / 隐藏
+  eye.addEventListener('click', () => {
+    const hidden = tokenEl.type === 'password';
+    tokenEl.type = hidden ? 'text' : 'password';
+    eye.textContent = hidden ? '◌' : '◉';
+    eye.setAttribute('aria-label', hidden ? '隐藏令牌' : '显示令牌');
+    tokenEl.focus();
+  });
+
+  function showError(msg) {
+    errText.textContent = msg;
+    err.classList.remove('show');
+    void err.offsetWidth; // 重启动画
+    err.classList.add('show');
+    tokenEl.focus();
+    tokenEl.select();
+  }
+
+  // 提交
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const value = tokenEl.value.trim();
+
+    if (!value) {
+      showError('令牌不能为空');
+      return;
+    }
+
+    submit.disabled = true;
+    submit.textContent = '正在验证…';
+
+    // 真的校验：POST /api/login { token } → 200 才放行
+    try {
+      const r = await fetch('/api/login', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ token: value }),
+      });
+      if (!r.ok) {
+        const why = await r.json().catch(() => ({}));
+        showError(why.error || '令牌不对');
+        submit.disabled = false;
+        submit.textContent = '进入';
+        return;
+      }
+    } catch {
+      showError('连不上面板服务，确认服务还在跑');
+      submit.disabled = false;
+      submit.textContent = '进入';
+      return;
+    }
+
+    submit.textContent = '进来了';
+    window.location.href = 'preview.html';
+  });
+
+  // 回车直接提交；有输入就把错误收起来
+  tokenEl.addEventListener('input', () => err.classList.remove('show'));
+  tokenEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') form.requestSubmit();
+  });
+</script>
+
+</body>
+</html>

@@ -1,0 +1,31 @@
+{
+  "name": "ringmind",
+  "version": "1.1.0",
+  "private": true,
+  "type": "module",
+  "description": "环形的心 — 一个会遗忘的记忆库，给 AI 角色用",
+  "keywords": [
+    "memory",
+    "forgetting",
+    "ai-agent",
+    "dsh-plugin",
+    "onebot"
+  ],
+  "license": "SEE LICENSE IN LICENSE",
+  "engines": {
+    "node": ">=22.5.0"
+  },
+  "scripts": {
+    "test": "node --test tests/core.test.js tests/server.test.js",
+    "start": "node src/web/server.js",
+    "serve": "node src/web/server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ya-shua/ringmind.git"
+  },
+  "homepage": "https://github.com/ya-shua/ringmind#readme",
+  "bugs": {
+    "url": "https://github.com/ya-shua/ringmind/issues"
+  }
+}
