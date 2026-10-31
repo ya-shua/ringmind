@@ -1,6 +1,6 @@
 # 环形的心 · MCP 壳（mcp/）
 
-把记忆库接到 DSH agent 上的那只手。`docs/剩余工作.md` 里第「三」条「DSH 插件壳」，就是这里。
+把记忆库接到 DSH agent 上的那只手。记忆库本体只是个 npm 包，接不上任何东西；这一层把它变成她能调用的工具。
 
 ## 谁在用它
 
@@ -40,7 +40,7 @@ QQ ──► SnowLuma（OneBot v11 WS）──► qq-bridge ──► DSH agent 
 | `ring_forget` | 主动忘掉一条 |
 
 **模糊圈（五圈）和回忆圈不对她暴露**：不进工具 enum、不进返回文案，掉进去只显示"记不太清了"。
-详见 `src/core/rings.js` 与 `docs/剩余工作.md` 的「一、接 OneBot」一节。
+详见 `src/core/rings.js`（位置定义与可见比例）和 `src/core/recall.js`（想起来时怎么挑点）。
 
 ## 每天补跑一次降级
 

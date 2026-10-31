@@ -22,6 +22,7 @@ import { fileURLToPath } from "node:url";
 import { Ringmind } from "../index.js";
 import { ensureToken, verifyToken, makeSessionCookie, readToken, rotateToken } from "./auth.js";
 import { checkForUpdate, applyUpdate, restartPanel, localVersion } from "./update.js";
+import { healGateway, saveGatewayConfig } from "./gateway.js";
 import { CUSTOM_PREFIX, PRESETS, MODES, RINGS, RING_ORDER, metaMemoryDefaultOf } from "../core/rings.js";
 import { buildSeaScene } from "./sea.js";
 
@@ -32,15 +33,38 @@ const HERE = fileURLToPath(new URL(".", import.meta.url));
 // 默认找项目 data/token-usage.jsonl；data-location.json 里给了 tokenUsageFile 就用那个。
 const DEFAULT_TOKEN_LEDGER = resolve(HERE, "../../data/token-usage.jsonl");
 
-// 元 / 百万 token（空闲时段单价；高峰 = ×2）
+// 元 / 百万 token（空闲时段单价）。peakX2 = 高峰 ×2 是 DeepSeek 的计价规则，
+// 别家模型别乱乘。想加别的牌子/改价，在 data/token-prices.json 里按同样格式覆盖。
 const TOKEN_PRICES = {
-  "deepseek-flash": { label: "DeepSeek-V4.1-Flash", cacheHit: 0.02, cacheMiss: 1, cacheWrite: 1, output: 4 },
-  "deepseek-v4-flash": { label: "DeepSeek-V4.1-Flash", cacheHit: 0.02, cacheMiss: 1, cacheWrite: 1, output: 4 },
-  "deepseek-v4-flash-vision-exp": { label: "DeepSeek-V4.1-Flash", cacheHit: 0.02, cacheMiss: 1, cacheWrite: 1, output: 4 },
-  "deepseek-v4-pro": { label: "DeepSeek-V4-Pro", cacheHit: 0.15, cacheMiss: 4.5, cacheWrite: 4.5, output: 13.5 },
-  "deepseek-pro": { label: "DeepSeek-V4-Pro", cacheHit: 0.15, cacheMiss: 4.5, cacheWrite: 4.5, output: 13.5 },
+  "deepseek-flash": { label: "DeepSeek-V4.1-Flash", cacheHit: 0.02, cacheMiss: 1, cacheWrite: 1, output: 4, peakX2: true },
+  "deepseek-v4-flash": { label: "DeepSeek-V4.1-Flash", cacheHit: 0.02, cacheMiss: 1, cacheWrite: 1, output: 4, peakX2: true },
+  "deepseek-v4-flash-vision-exp": { label: "DeepSeek-V4.1-Flash", cacheHit: 0.02, cacheMiss: 1, cacheWrite: 1, output: 4, peakX2: true },
+  "deepseek-v4-pro": { label: "DeepSeek-V4-Pro", cacheHit: 0.15, cacheMiss: 4.5, cacheWrite: 4.5, output: 13.5, peakX2: true },
+  "deepseek-pro": { label: "DeepSeek-V4-Pro", cacheHit: 0.15, cacheMiss: 4.5, cacheWrite: 4.5, output: 13.5, peakX2: true },
 };
 const FALLBACK_PRICE = TOKEN_PRICES["deepseek-flash"];
+
+// 本机时区（分钟偏移，东八区 = +480）：按天分账、高峰判断都用它。
+// 以前写死东八区，装到别的时区「按天」会错一天；现在跟着系统时钟走。
+const TZ_OFFSET_MIN = -new Date().getTimezoneOffset();
+const TZ_OFFSET_STR = (() => {
+  const sign = TZ_OFFSET_MIN < 0 ? "-" : "+";
+  const abs = Math.abs(TZ_OFFSET_MIN);
+  const hh = String(Math.floor(abs / 60)).padStart(2, "0");
+  const mm = String(abs % 60).padStart(2, "0");
+  return `${sign}${hh}:${mm}`;
+})();
+
+// 可选的自定义价目：data/token-prices.json（data/ 不入库，每台机器自己填）。
+// 格式 { "模型名": { label, cacheHit, cacheMiss, cacheWrite, output, peakX2 } }，
+// 按模型名覆盖内置价目（Kimi / Claude / GLM 想按真价算就填这里）；
+// 没这个文件就用内置的 DeepSeek 价，没登场的模型仍走兜底价（深色标注的话看前端）。
+try {
+  const over = JSON.parse(readFileSync(resolve(HERE, "../../data/token-prices.json"), "utf8"));
+  for (const [k, v] of Object.entries(over || {})) {
+    if (v && typeof v === "object") TOKEN_PRICES[k] = { peakX2: false, ...v };
+  }
+} catch { /* 没有自定义价目就用内置的 */ }
 
 // 法定节假日不算高峰（照 qq-bridge 的 CN_HOLIDAYS 口径）
 const CN_HOLIDAYS = new Set([
@@ -64,9 +88,10 @@ const CN_HOLIDAYS = new Set([
   "2027-01-01", "2027-01-02", "2027-01-03",
 ]);
 
-/** 北京时间是不是高峰（工作日 9-12、14-18，节假日除外） */
+/** 本机时区里是不是高峰（工作日 9-12、14-18，法定节假日除外）——
+ *  以前写死北京时间，装到别的时区「按天」会错一天；现在跟着系统时钟走 */
 function isPeakHour(ms) {
-  const d = new Date(ms + 8 * 3600_000); // 转成北京时间看
+  const d = new Date(ms + TZ_OFFSET_MIN * 60_000); // 转成本机时区看
   const wd = d.getUTCDay(); // 0=周日
   if (wd === 0 || wd === 6) return false;
   const date = d.toISOString().slice(0, 10);
@@ -78,7 +103,8 @@ function isPeakHour(ms) {
 /** 算一次调用的钱（元） */
 function costOf(model, b, ms) {
   const p = TOKEN_PRICES[model] || FALLBACK_PRICE;
-  const mult = isPeakHour(ms) ? 2 : 1;
+  // 高峰 ×2 是 DeepSeek 的计价规则（p.peakX2），别家模型不乘
+  const mult = p.peakX2 && isPeakHour(ms) ? 2 : 1;
   const M = 1e6;
   // cacheWrite 缺省时按未命中价计（DeepSeek 目前不单独报，恒为 0，留着将来用）
   const writeRate = p.cacheWrite ?? p.cacheMiss;
@@ -180,8 +206,8 @@ function readDshLedger(filePath, hours = 0) {
 
   for (const [day, providers] of Object.entries(days)) {
     if (!providers || typeof providers !== "object") continue;
-    // 一天算一条：取当天中午 12 点（北京时间）当代表时刻，避免时区把日期挪走
-    const ms = new Date(day + "T12:00:00+08:00").getTime();
+    // 一天算一条：取当天中午 12 点（本机时区）当代表时刻，避免时区把日期挪走
+    const ms = new Date(day + "T12:00:00" + TZ_OFFSET_STR).getTime();
     if (!Number.isFinite(ms)) continue;
     if (hours > 0 && ms < cutoff) continue;
 
@@ -293,7 +319,7 @@ function dbTokenRecords(store, hours = 0) {
     const rows = store.readTokenUsage(hours);
     if (!rows || !rows.length) return null;
     return rows.map((r) => ({
-      t: new Date(r.day + "T12:00:00+08:00").getTime(),
+      t: new Date(r.day + "T12:00:00" + TZ_OFFSET_STR).getTime(),
       model: r.model,
       key: r.provider,
       cost: Number(r.cost) || 0,
@@ -485,24 +511,40 @@ const ONEBOT_FILE = resolve(HERE, "../../onebot.json");
 function readOnebot(dbRef) {
   // consoleUrl / consolePassword 是 SnowLuma 控制台（WebUI）的登录信息。
   // 控制台不放行 OneBot 的 accessToken，只能用这个密码 —— 存一次，之后自动读。
+  //
+  // gatewayDir 是 SnowLuma 主目录（可选）。填了它，换 QQ 号之后面板能自己去
+  // config/onebot_*.json 里找出新 token，不用手改（见 gateway.js）。
   const def = {
     url: "http://127.0.0.1:3000",
     token: "",
     consoleUrl: "http://127.0.0.1:5099",
     consolePassword: "",
+    gatewayDir: "",
   };
-  try {
-    if (existsSync(ONEBOT_FILE)) {
+
+  if (existsSync(ONEBOT_FILE)) {
+    try {
       const j = JSON.parse(readFileSync(ONEBOT_FILE, "utf8"));
       return { ...def, ...(j && typeof j === "object" ? j : {}) };
+    } catch {
+      // 文件在，但读坏了（写到一半断电、手工编辑漏逗号…）。
+      //
+      // ⚠️ 这里**绝对不能**退回去拿库里的老值顶上 —— 那会：
+      //   ① 把用户刚填的 gatewayDir / 控制台密码冲掉；
+      //   ② 把很久以前那个号的 token "复活"，于是面板莫名其妙又 401 了。
+      //   只标记一下，让上层照实报「配置文件读不了」，不替人做决定。
+      return { ...def, __corrupt: true };
     }
-  } catch {}
-  // 第一次：从当前库的 meta 里搬出来（老版本存在那儿）
+  }
+
+  // 文件**真的不存在**（老版本升级上来的）：从当前库的 meta 里搬一次。
+  // 搬完就把 meta 清掉 —— 凭证只该有一个来源，留着就是隐患。
   try {
     const raw = dbRef && dbRef.store ? dbRef.store.getMeta("onebot") : null;
     if (raw) {
       const j = { ...def, ...JSON.parse(raw) };
       writeFileSync(ONEBOT_FILE, JSON.stringify(j, null, 2) + "\n", "utf8");
+      try { dbRef.store.setMeta("onebot", ""); } catch {}
       return j;
     }
   } catch {}
@@ -515,6 +557,8 @@ function writeOnebot(cfg) {
     token: String((cfg && cfg.token) || "").trim(),
     consoleUrl: String((cfg && cfg.consoleUrl) || "http://127.0.0.1:5099").trim() || "http://127.0.0.1:5099",
     consolePassword: String((cfg && cfg.consolePassword) || ""),
+    // SnowLuma 主目录：填了才能换号自愈；不填就只是报错，和以前一样
+    gatewayDir: String((cfg && cfg.gatewayDir) || "").trim(),
   };
   try {
     writeFileSync(ONEBOT_FILE, JSON.stringify(out, null, 2) + "\n", "utf8");
@@ -1846,7 +1890,24 @@ export async function createServer({ dataDir, dbPath, port = 5173, host = "127.0
         } catch {}
 
         const st2 = db.todayStats();
-        const onebot = await probe(ob.url, ob.token);
+        let onebot = await probe(ob.url, ob.token);
+        // 探测不通（最常见：换了 QQ 号，token 还是旧的 → 401）就先试着自愈。
+        // 只在失败时动手，正常路径不付任何代价；节流在 gateway.js 里。
+        let healed = null;
+        const bad = !onebot.reachable || onebot.status !== 200;
+        if (bad && ob.gatewayDir) {
+          healed = await healGateway(ob);
+          if (healed) {
+            const wrote = saveGatewayConfig(ONEBOT_FILE, ob, healed);
+            ob = { ...ob, url: healed.url, token: healed.token };
+            onebot = await probe(ob.url, ob.token);
+            if (wrote) {
+              console.log(
+                `[网关自愈] 已切换到账号 ${healed.uin}，并写回 onebot.json`
+              );
+            }
+          }
+        }
         // 控制台地址：能从 SnowLuma 嘴里问出来就问，问不到再退回默认
         const con = await resolveConsoleUrl(ob);
 
@@ -1905,6 +1966,11 @@ export async function createServer({ dataDir, dbPath, port = 5173, host = "127.0
               consoleAuto: con.auto,      // true = 端口是从 SnowLuma 自己嘴里问出来的
               consolePort: con.port,
               consolePassword: ob.consolePassword || "",
+              // 换号自愈：gatewayDir 没配就永远 false
+              gatewayDir: ob.gatewayDir || "",
+              healed: healed ? { uin: healed.uin, changed: healed.changed } : null,
+              // 配置文件读不了：不拿库里的老值顶替，照实说
+              configCorrupt: Boolean(ob.__corrupt),
             },
             qq,
             others: [
@@ -1943,6 +2009,10 @@ export async function createServer({ dataDir, dbPath, port = 5173, host = "127.0
           consolePassword: "consolePassword" in body
             ? String(body.consolePassword || "")
             : prev.consolePassword,
+          // 没传就保留：这个字段一丢，换号自愈就悄悄失效了
+          gatewayDir: "gatewayDir" in body
+            ? String(body.gatewayDir || "").trim()
+            : (prev.gatewayDir || ""),
         };
         return json(res, 200, { ok: true, data: writeOnebot(cfg) });
       }

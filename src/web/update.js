@@ -19,6 +19,12 @@ import zlib from "node:zlib";
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, "../..");
 
+// 测试钩子：把根目录指到临时夹具。真实安装永远走默认值。
+let ROOT_ACTIVE = ROOT;
+export function setRootForTest(dir) {
+  ROOT_ACTIVE = dir ? resolve(dir) : ROOT;
+}
+
 /** 仓库和分支：改仓库名只要改这两行 */
 const REPO = "ya-shua/ringmind";
 const BRANCH = "main";
@@ -29,7 +35,7 @@ const DATA_GUARD = ["libraries.json", "data-location.json", "onebot.json"];
 
 function run(cmd, args, opts = {}) {
   return new Promise((ok) => {
-    execFile(cmd, args, { cwd: ROOT, windowsHide: true, timeout: 90000, ...opts }, (err, stdout, stderr) => {
+    execFile(cmd, args, { cwd: ROOT_ACTIVE, windowsHide: true, timeout: 90000, ...opts }, (err, stdout, stderr) => {
       ok({
         ok: !err,
         code: err ? (typeof err.code === "number" ? err.code : 1) : 0,
@@ -42,7 +48,7 @@ function run(cmd, args, opts = {}) {
 
 export function localVersion() {
   try {
-    const j = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8"));
+    const j = JSON.parse(readFileSync(join(ROOT_ACTIVE, "package.json"), "utf8"));
     return String(j.version || "0.0.0");
   } catch {
     return "0.0.0";
@@ -50,7 +56,7 @@ export function localVersion() {
 }
 
 export function isGitCheckout() {
-  return existsSync(join(ROOT, ".git"));
+  return existsSync(join(ROOT_ACTIVE, ".git"));
 }
 
 function ghHeaders() {
@@ -64,7 +70,7 @@ function ghHeaders() {
 function dataFingerprint() {
   const out = {};
   for (const f of DATA_GUARD) {
-    const p = join(ROOT, f);
+    const p = join(ROOT_ACTIVE, f);
     try {
       if (existsSync(p)) out[f] = readFileSync(p, "utf8").length + ":" + f;
       else out[f] = "missing";
@@ -145,12 +151,12 @@ async function applyViaTarball() {
 
   let written = 0;
   let skipped = 0;
-  const ROOT_ABS = resolve(ROOT);
+  const ROOT_ABS = resolve(ROOT_ACTIVE);
   for (const [rel, data] of files) {
     const p = strip ? rel.slice(strip) : rel;
     if (!p || p.endsWith("/")) continue;
     if (!allow.has(p)) { skipped++; continue; }
-    const abs = resolve(join(ROOT, p));
+    const abs = resolve(join(ROOT_ACTIVE, p));
     if (!abs.startsWith(ROOT_ABS + (process.platform === "win32" ? "\\" : "/")) && abs !== ROOT_ABS) {
       skipped++;
       continue;
@@ -218,6 +224,14 @@ async function checkForUpdateOnce() {
   const headTree = await run("git", ["rev-parse", "HEAD^{tree}"]);
   const localTree = headTree.ok ? headTree.stdout : "";
 
+  // 源码包更新过的记号：HEAD 没动（还是旧 commit），但工作区内容
+  // 已经跟远端某棵树一致 —— 这个树号记在 data/.update-state.json
+  let tarballTree = "";
+  try {
+    const sj = JSON.parse(readFileSync(join(ROOT_ACTIVE, "data", ".update-state.json"), "utf8"));
+    tarballTree = String(sj.toTreeSha || "");
+  } catch { /* 没有这个记号就是没走过源码包更新 */ }
+
   // 只用 GitHub API，不跑 git fetch —— 国内直连 git 协议能卡到一分多钟
   const opt = { headers: ghHeaders(), signal: AbortSignal.timeout(8000) };
 
@@ -259,9 +273,15 @@ async function checkForUpdateOnce() {
     };
   }
 
-  const sameContent = !!(localTree && remoteTree && localTree === remoteTree);
+  const sameContent =
+    !!(localTree && remoteTree && localTree === remoteTree) ||
+    !!(tarballTree && remoteTree && tarballTree === remoteTree);
 
   if ((localSha && remoteSha === localSha) || sameContent) {
+    // 真 git 追平了的话，源码包记号就过时了，清掉
+    if (localSha && remoteSha === localSha) {
+      try { unlinkSync(join(ROOT_ACTIVE, "data", ".update-state.json")); } catch { }
+    }
     return {
       ok: true,
       current,
@@ -360,7 +380,11 @@ export async function applyUpdate() {
   let stashed = false;
   if (dirty) {
     const label = "ringmind-auto-update-" + new Date().toISOString().replace(/[:.]/g, "-");
-    const s = await run("git", ["stash", "push", "--include-untracked", "-m", label]);
+    // stash 会造一个提交：-c 带上身份，没配全局 git 身份的机器也能收
+    const s = await run("git", [
+      "-c", "user.name=ringmind", "-c", "user.email=ringmind@local",
+      "stash", "push", "--include-untracked", "-m", label,
+    ]);
     if (!s.ok) {
       return { ok: false, error: "本地有改动，且自动收起来失败：" + (s.stderr || s.stdout) };
     }
@@ -384,6 +408,24 @@ export async function applyUpdate() {
     }
     clearCheckCache();
     const after2 = dataFingerprint();
+
+    // 记下这次源码包覆盖到的远端内容树：HEAD 没动（还是旧 commit），
+    // 不记的话下次 checkForUpdate 会一直报「有更新」
+    try {
+      const cr = await fetch(API + "/commits/" + BRANCH, { headers: ghHeaders(), signal: AbortSignal.timeout(8000) });
+      if (cr.ok) {
+        const cj = await cr.json();
+        const tree = String(cj.commit?.tree?.sha || "");
+        if (tree) {
+          mkdirSync(join(ROOT_ACTIVE, "data"), { recursive: true });
+          writeFileSync(
+            join(ROOT_ACTIVE, "data", ".update-state.json"),
+            JSON.stringify({ mode: "tarball", toTreeSha: tree, at: Date.now() }, null, 2)
+          );
+        }
+      }
+    } catch { /* 拿不到远端树就算了，最多面板多报一次更新 */ }
+
     const lost2 = Object.keys(before).filter((k) => before[k] !== "missing" && after2[k] === "missing");
     return {
       ok: true,
