@@ -2138,6 +2138,7 @@ export async function createServer({ dataDir, dbPath, port = 5173, host = "127.0
         const scene = buildSeaScene(db.store, db.getConfig(), {
           now: Date.now(),
           vault: q.get("vault") === "1",
+          vaultMax: Number.isFinite(Number(q.get("vaultMax"))) && Number(q.get("vaultMax")) > 0 ? Number(q.get("vaultMax")) : undefined,
         });
         return json(res, 200, { ok: true, data: scene });
       }

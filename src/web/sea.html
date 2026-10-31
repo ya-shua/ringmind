@@ -378,7 +378,8 @@ const hintEl = document.getElementById("hint");
 const FOCAL = 720;
 const cam = { yaw: 0.55, pitch: 0.4, dist: 940 };   // 默认比一版拉近了一圈，海铺满屏幕
 const DIST_MIN = 380, DIST_MAX = 2800;
-const IDLE_SPIN_AFTER = 3000;                        // 停手 3 秒，海自己接着转
+const IDLE_SPIN_AFTER = 3000;
+const VAULT_MAX = 80;                                // 总库幻影同屏最多几条：全画出来会糊成一片，反而看不见圈里的星                        // 停手 3 秒，海自己接着转
 
 let scene = null;
 let byId = new Map();
@@ -388,7 +389,8 @@ let selectedId = null;
 let hoverId = null;
 let query = "";
 let ringOff = new Set();        // 被藏掉的圈
-let vaultOn = false;
+// 总库幻影默认开着：它是记忆海最外面那层雾，关了海看着空一半
+let vaultOn = true;
 let vaultLoaded = false;
 let spinOn = true;
 let orbitsOn = false;   // 轨道线和圈名默认不画，进海先看星（九个位置面板里可开）
@@ -443,7 +445,8 @@ function isStarVisible(st) {
 /* ── 读海 ────────────────────────────────────────────── */
 
 async function loadSea(withVault) {
-  const r = await fetch("/api/sea" + (withVault ? "?vault=1" : ""), { cache: "no-store" });
+  const qs = withVault ? "?vault=1&vaultMax=" + VAULT_MAX : "";
+  const r = await fetch("/api/sea" + qs, { cache: "no-store" });
   if (r.status === 401) { location.replace("/"); return null; }
   const j = await r.json();
   if (!j.ok) throw new Error(j.error || "读不了海");
@@ -612,7 +615,8 @@ function frame(t) {
     vel.yaw *= 0.9; vel.pitch *= 0.9;
     if (Math.abs(vel.yaw) < 1e-5) vel.yaw = 0;
     if (Math.abs(vel.pitch) < 1e-5) vel.pitch = 0;
-    if (spinOn && t - lastInteract > IDLE_SPIN_AFTER) cam.yaw += 0.00016 * dt;
+    // 鼠标搁在某颗星上就冻住 —— 想看清那颗是谁的时候，海别自己转
+    if (spinOn && !hoverId && t - lastInteract > IDLE_SPIN_AFTER) cam.yaw += 0.00016 * dt;
   }
   if (cam.pitch > 1.45) cam.pitch = 1.45;
   if (cam.pitch < -1.45) cam.pitch = -1.45;
@@ -808,15 +812,28 @@ function drawSelectionMarker() {
 /* ── 拾取 / 悬停 ─────────────────────────────────────── */
 
 function nearestStar(mx, my, maxDist) {
-  // proj 里是本帧所有可见星；挑屏幕距离最近的一颗
+  // proj 里是本帧所有可见星，挑屏幕距离最近的一颗。
+  // 总库幻影只有 1.5px，跟真星用同一个判定圈就永远够不着：
+  // 先按正常半径找真星，找不到再按放宽的半径找幻影。
   let best = null, bestD = maxDist;
   for (const st of visibleStars) {
+    if (st.ring === "vault") continue;
     const p = proj.get(st.id);
     if (!p) continue;
     const d = Math.hypot(p.sx - mx, p.sy - my);
     if (d < bestD) { bestD = d; best = st; }
   }
-  return best;
+  if (best) return best;
+
+  let ghost = null, gD = 20;
+  for (const st of visibleStars) {
+    if (st.ring !== "vault") continue;
+    const p = proj.get(st.id);
+    if (!p) continue;
+    const d = Math.hypot(p.sx - mx, p.sy - my);
+    if (d < gD) { gD = d; ghost = st; }
+  }
+  return ghost;
 }
 
 function pickHover() {
@@ -1119,7 +1136,8 @@ window.addEventListener("resize", resize);
 resize();
 
 requestAnimationFrame(frame);
-refresh(false);
+// 首次就把总库一起拉下来，不用再点一次开关
+refresh(true);
 </script>
 </body>
 </html>
