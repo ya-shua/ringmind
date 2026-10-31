@@ -1,4 +1,4 @@
-﻿/**
+/**
  * 通用入库服务（server/ingest-server.mjs）的测试
  *
  * 只测"解析"这一层 —— 它决定了消息进库时长什么样，是最容易错的地方。
@@ -197,14 +197,14 @@ describe("ingest · 合并时补点", () => {
     assert.equal(a.memoryId, b.memoryId);
 
     const mem = db.store.getMemory(b.memoryId);
-    assert.ok(mem.content.includes("有点咸"), mem.content);
+    assert.ok(mem.content.includes("有点辣"), mem.content);
     assert.ok(mem.content.includes("火锅"), mem.content);
 
     // 关键：火锅这几个字必须进 points，否则 recall 永远搜不到
     const pts = db.store.listPoints(b.memoryId);
     const texts = pts.map((p) => p.text).join("|");
     assert.ok(texts.includes("火锅"), "points 里应该有火锅，实际：" + texts);
-    assert.ok(texts.includes("有点咸"), "points 里应该有面，实际：" + texts);
+    assert.ok(texts.includes("有点辣"), "points 里应该有面，实际：" + texts);
 
     db.close();
   });
