@@ -397,6 +397,7 @@ let orbitsOn = false;   // 轨道线和圈名默认不画，进海先看星（�
 let lastInteract = 0;
 let vel = { yaw: 0, pitch: 0 }; // 惯性
 let camTween = null;            // 点星后的镜头滑行
+let frozen = new Map();         // 鼠标压住的那颗星：屏幕坐标冻在这里，别的照转
 let W = 0, H = 0, DPR = 1;
 
 /* ── 小工具 ──────────────────────────────────────────── */
@@ -615,8 +616,7 @@ function frame(t) {
     vel.yaw *= 0.9; vel.pitch *= 0.9;
     if (Math.abs(vel.yaw) < 1e-5) vel.yaw = 0;
     if (Math.abs(vel.pitch) < 1e-5) vel.pitch = 0;
-    // 鼠标搁在某颗星上就冻住 —— 想看清那颗是谁的时候，海别自己转
-    if (spinOn && !hoverId && t - lastInteract > IDLE_SPIN_AFTER) cam.yaw += 0.00016 * dt;
+    if (spinOn && t - lastInteract > IDLE_SPIN_AFTER) cam.yaw += 0.00016 * dt;
   }
   if (cam.pitch > 1.45) cam.pitch = 1.45;
   if (cam.pitch < -1.45) cam.pitch = -1.45;
@@ -730,6 +730,7 @@ function drawStars() {
   const list = [];
   for (const st of visibleStars) {
     let p = project(st.x, st.y, st.z);
+
     // 圆心的星永远画在心外：投影快贴到心时，沿半径滑到心缘外一圈——绕过去，不被心吞掉也不探出半个身子
     if (st.ring === 'core') {
       const minPx = 15 * (FOCAL / Math.max(cam.dist, 60)) * 1.12 + 20;
@@ -738,6 +739,16 @@ function drawStars() {
       if (d < 0.5) { dx = 0; dy = -1; d = 1; }
       if (d < minPx) p = { ...p, sx: W / 2 + (dx / d) * minPx, sy: H / 2 + (dy / d) * minPx };
     }
+
+    // 鼠标压住的那颗：坐标冻在它被抓到的那一帧，其余照常转 —— 想看清它是谁，就别让它跑。
+    // 放在 core 调整之后：存下来的必须是最终画出来的位置，否则圆心那颗会一直重算、冻不住。
+    if (st.id === hoverId) {
+      const f = frozen.get(st.id);
+      if (f) p = f; else frozen.set(st.id, p);
+    } else if (frozen.has(st.id)) {
+      frozen.delete(st.id);
+    }
+
     proj.set(st.id, p);
     list.push({ st, p });
   }
@@ -840,6 +851,7 @@ function pickHover() {
   if (dragging) return;
   const st = nearestStar(mouse.x, mouse.y, 14);
   if ((st && st.id) !== hoverId) {
+    frozen.clear(); // 换了一颗就重新冻，别让它一口气跳到之前的位置
     hoverId = st ? st.id : null;
     canvas.style.cursor = st ? "pointer" : dragging ? "grabbing" : "grab";
     if (!st) { tip.style.display = "none"; return; }
