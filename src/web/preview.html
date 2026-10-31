@@ -1487,9 +1487,11 @@
     (function () {
       var el = document.getElementById("nav-sea");
       if (!el) return;
+      // 记忆海和面板是同一个站点的两页，来回切换就地跳，不新开标签页。
+      // （sea.html 右上角的「管理面板」本来就是这个行为，两边保持一致。）
       el.addEventListener("click", function (ev) {
         ev.stopImmediatePropagation();
-        window.open("sea.html", "_blank");
+        window.location.href = "sea.html";
       });
     })();
   </script>
