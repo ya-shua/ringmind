@@ -1,6 +1,6 @@
 # 环形的心 · Ringmind
 
-**v1.2.1**
+**v1.3.0**
 
 一个**会遗忘**的记忆库。
 
@@ -159,6 +159,42 @@ QQ → SnowLuma → qq-bridge ─┬─ DSH agent → mcp-ring（她主动记 / 
 
 ---
 
+## 接别的框架（AstrBot / NapCat / 自己写的）
+
+记忆库本体不认识任何框架。它只认两样东西：
+
+```
+MCP 四个工具    她主动记 / 想起来
+一个 HTTP 接口   别人把聊天灌进来
+```
+
+`server/ingest-server.mjs` 就是那个 HTTP 接口 —— **谁的框架都行，POST 过来就能记，环心本体一行代码没改**：
+
+```
+QQ → AstrBot 插件 ──POST /ingest──► ingest-server ─┬─ vault   每条原文
+                                                   └─ ring4   同一段对话合并成一条
+```
+
+```bash
+node server/ingest-server.mjs        # 默认 127.0.0.1:5188
+curl http://127.0.0.1:5188/health    # {"ok":true,"vault":0,...}
+```
+
+主人判定不靠框架的"管理员"概念（AstrBot 的 `admins_id` 是 WebUI 登录名，不是 QQ 号），
+而是靠 `owners` 配置比 `uid`。配了之后总库里长这样：
+
+```
+2026/10/31 22:38｜私聊：【管理员】某人：今天中午吃的面不错
+```
+
+AstrBot 现成的转发插件在 [`integrations/astrbot/`](integrations/astrbot/)，三步装好。
+换别的框架只要照着它的接口 POST 就行，见那份 README 的「接口」一节。
+
+> **两条路互斥**：`qq-bridge` 和 `ingest-server` 别同时往同一个 `.db` 写，
+> 否则同一句话会在总库里出现两次。要同时养两只机器人，就给它们两个库文件。
+
+---
+
 ## 设计原则
 
 1. **她决定，库执行**——判断权在人这边，遗忘权在库这边
@@ -171,7 +207,7 @@ QQ → SnowLuma → qq-bridge ─┬─ DSH agent → mcp-ring（她主动记 / 
 
 ## 状态
 
-> ✅ **v1.2.1：记忆库本体 + Web 面板 + 记忆海 + DSH 壳完成，69 个测试全过。OneBot 由外部 qq-bridge 补丁承接（见「怎么接 QQ」）。**
+> ✅ **v1.3.0：记忆库本体 + Web 面板 + 记忆海 + DSH 壳 + 通用入库服务完成，89 个测试全过。QQ 走 qq-bridge（见「怎么接 QQ」），别的框架走 ingest-server（见「接别的框架」）。**
 
 - [x] 结构与百分比确定
 - [x] 遗忘/恢复机制确定
