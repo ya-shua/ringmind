@@ -139,7 +139,8 @@ function qqLedgerCandidates() {
     join(homeCn, "deepseek-harness", "default-workspace"),
     join(docs, "deepseek-harness", "default-workspace"),
     join(home, ".dsh", "default-workspace"),
-    "D:\\AI",
+    // 装在别的盘、或者路径不按上面几条来的：在 data-location.json 里写 tokenUsageFile，
+    // 那一条优先。别在代码里写死绝对路径 —— 那既是隐私，换台机器也失效
   ];
   for (const r of roots) {
     list.push(join(r, "qq-bridge", "state", "token-usage.jsonl"));
