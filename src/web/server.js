@@ -1865,8 +1865,16 @@ export async function createServer({ dataDir, dbPath, port = 5173, host = "127.0
           const ctl = new AbortController();
           const t = setTimeout(() => ctl.abort(), ms);
           try {
+            // OneBot 11 的 HTTP API 要 POST。之前这里漏了 method，走成 GET ——
+            // /get_login_info 有些实现能容忍，/get_status 就不一定了：
+            // 回一坨不是 OneBot 的东西，data.online 读不到，面板就一律显示「离线」。
             const r = await fetch(u.replace(/\/+$/, "") + path, {
-              headers: tk ? { Authorization: "Bearer " + tk } : {},
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                ...(tk ? { Authorization: "Bearer " + tk } : {}),
+              },
+              body: "{}",
               signal: ctl.signal,
             });
             const b = await r.json().catch(() => ({}));
@@ -1958,7 +1966,11 @@ export async function createServer({ dataDir, dbPath, port = 5173, host = "127.0
               authorized: onebot.status === 200,
               status: onebot.status ?? null,
               error: onebot.error || null,
-              online: gw?.online ?? null,
+              // 三个来源，谁先给出确定答案就用谁：
+              //   ① get_status 说 online=true     → 在线
+              //   ② get_login_info 拿到 user_id   → 在线（离线时这接口拿不到号）
+              //   ③ 两个都没拿到                  → null（前端显示「有响应」）
+              online: gw?.online === true ? true : (qq && qq.userId ? true : (gw?.online ?? null)),
               uptime: gw?.uptime ?? null,
               app: ver?.app || null,
               version: ver?.version || null,

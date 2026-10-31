@@ -1,6 +1,6 @@
 # 环形的心 · Ringmind
 
-**v1.3.4**
+**v1.3.5**
 
 一个**会遗忘**的记忆库。
 
@@ -207,7 +207,7 @@ AstrBot 现成的转发插件在 [`integrations/astrbot/`](integrations/astrbot/
 
 ## 状态
 
-> ✅ **v1.3.4：记忆库本体 + Web 面板 + 记忆海 + DSH 壳 + 通用入库服务完成，93 个测试全过。QQ 走 qq-bridge（见「怎么接 QQ」），别的框架走 ingest-server（见「接别的框架」）。**
+> ✅ **v1.3.5：记忆库本体 + Web 面板 + 记忆海 + DSH 壳 + 通用入库服务完成，93 个测试全过。QQ 走 qq-bridge（见「怎么接 QQ」），别的框架走 ingest-server（见「接别的框架」）。**
 
 - [x] 结构与百分比确定
 - [x] 遗忘/恢复机制确定
