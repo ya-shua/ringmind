@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 通用入库服务（server/ingest-server.mjs）的测试
  *
  * 只测"解析"这一层 —— 它决定了消息进库时长什么样，是最容易错的地方。
@@ -163,5 +163,100 @@ describe("vaultLine 格式", () => {
     const line = vaultLine(m);
     assert.ok(!line.includes("：："), "不该出现两个连续冒号：" + line);
     assert.ok(line.endsWith("没名字的一条"));
+  });
+});
+/* ═══════════════ 合并不该把点丢掉 ═══════════════ */
+
+describe("ingest · 合并时补点", () => {
+  const mk = async () => {
+    const { Ringmind } = await import("../src/index.js");
+    return new Ringmind(":memory:", "test");
+  };
+
+  const msg = (text, extra = {}) => ({
+    text,
+    kind: "private",
+    convId: "1234567890",
+    uid: "1234567890",
+    sender: "某人",
+    isOwner: true,
+    isSelf: false,
+    ts: Date.now(),
+    convKey: "private:1234567890",
+    ...extra,
+  });
+
+  test("并进上一条之后，新内容也要有自己的点", async () => {
+    const { ingest } = await import("../server/ingest-server.mjs");
+    const db = await mk();
+
+    const a = ingest(msg("今天吃的面有点辣"), db);
+    const b = ingest(msg("明天想吃火锅", { ts: Date.now() + 1000 }), db);
+
+    assert.equal(b.action, "append");
+    assert.equal(a.memoryId, b.memoryId);
+
+    const mem = db.store.getMemory(b.memoryId);
+    assert.ok(mem.content.includes("有点咸"), mem.content);
+    assert.ok(mem.content.includes("火锅"), mem.content);
+
+    // 关键：火锅这几个字必须进 points，否则 recall 永远搜不到
+    const pts = db.store.listPoints(b.memoryId);
+    const texts = pts.map((p) => p.text).join("|");
+    assert.ok(texts.includes("火锅"), "points 里应该有火锅，实际：" + texts);
+    assert.ok(texts.includes("有点咸"), "points 里应该有面，实际：" + texts);
+
+    db.close();
+  });
+
+  test("新点排在最后（weight 为空，越晚越不重要）", async () => {
+    const { ingest } = await import("../server/ingest-server.mjs");
+    const db = await mk();
+
+    const a = ingest(msg("第一句"), db);
+    ingest(msg("第二句", { ts: Date.now() + 1000 }), db);
+    ingest(msg("第三句", { ts: Date.now() + 2000 }), db);
+
+    const pts = db.store.listPoints(a.memoryId);
+    assert.ok(pts.length >= 3, "至少三个点，实际 " + pts.length);
+    assert.equal(pts[0].weight, 1, "第一个点是 remember 写的，weight=1");
+    // 后面追加的点 weight 是 null
+    const nulls = pts.filter((p) => p.weight === null);
+    assert.ok(nulls.length >= 2, "追加的点 weight 该是 null，实际 " + nulls.length);
+
+    // 按 listPoints 的排序，null 一定垫在最后
+    const firstNull = pts.findIndex((p) => p.weight === null);
+    for (let i = firstNull; i < pts.length; i++) {
+      assert.equal(pts[i].weight, null, "从第一个 null 往后都该是 null");
+    }
+
+    db.close();
+  });
+
+  test("recall 能捞到合并进来的后半截", async () => {
+    const { ingest } = await import("../server/ingest-server.mjs");
+    const db = await mk();
+
+    ingest(msg("今天吃的面有点辣"), db);
+    ingest(msg("明天想吃火锅", { ts: Date.now() + 1000 }), db);
+
+    const hit = db.search("火锅");
+    assert.ok(hit.length > 0, "search 应该能搜到火锅");
+
+    db.close();
+  });
+
+  test("总库不会因为合并而重复写", async () => {
+    const { ingest } = await import("../server/ingest-server.mjs");
+    const db = await mk();
+
+    ingest(msg("一条"), db);
+    ingest(msg("两条", { ts: Date.now() + 1000 }), db);
+    ingest(msg("三条", { ts: Date.now() + 2000 }), db);
+
+    assert.equal(db.store.vaultCount(), 3, "三条消息 = 总库三行");
+    assert.equal(db.stats().ring4.total, 1, "圈里合并成一条");
+
+    db.close();
   });
 });

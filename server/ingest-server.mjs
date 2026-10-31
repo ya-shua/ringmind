@@ -65,6 +65,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { Ringmind } from "../src/index.js";
+import { autoSplit } from "../src/core/remember.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, "..");
@@ -228,9 +229,9 @@ function vaultLine(msg) {
   return `${stamp}｜${where}：${tag}${who}${msg.text}`;
 }
 
-function ingest(msg) {
+function ingest(msg, database = getDb()) {
+  const db = database;
   // ① 总库：一条一条，永不合并（这是"逐条原文"那条铁律）
-  const db = getDb();
   db.store.addVault({
     ts: msg.ts,
     source: msg.kind,
@@ -252,13 +253,22 @@ function ingest(msg) {
     msg.ts - prev.lastTs <= CFG.mergeWindowMs;
 
   if (withinWindow) {
-    // 追加到上一条：拿它的原文，接上新的，再写回去
+    // 追加到上一条：原文接上新的，再写回去
     const mem = db.store.getMemory(prev.memoryId);
     if (mem) {
       const joined = mem.content + "；" + msg.text;
       db.store.db
         .prepare("UPDATE memories SET content = ?, updated_at = ? WHERE id = ?")
         .run(joined, Date.now(), prev.memoryId);
+
+      // 光改 content 不够：环心的遗忘靠删点、检索靠点匹配。
+      // 不补点的话，后面接进来的话在 points 里根本不存在 ——
+      // 搜的时候永远捞不出来，衰减时也删不掉那一段，成了一条"删不掉的尾巴"。
+      // weight 传 null：新点自动排在最后（越晚说的越不重要），跟 remember 的规则一致。
+      for (const p of autoSplit(msg.text)) {
+        db.store.insertPoint(prev.memoryId, p, null);
+      }
+
       prev.lastTs = msg.ts;
       return { action: "append", memoryId: prev.memoryId };
     }
@@ -338,7 +348,7 @@ const server = http.createServer(async (req, res) => {
 
 /* ───────────────────────── 导出（给测试用）───────────────────────── */
 
-export { parseMessage, vaultLine, isPlaceholder, PLACEHOLDERS, CFG as INGEST_CONFIG };
+export { parseMessage, vaultLine, isPlaceholder, PLACEHOLDERS, ingest, CFG as INGEST_CONFIG };
 
 /* ───────────────────────── 启动 ───────────────────────── */
 
