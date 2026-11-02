@@ -2529,7 +2529,7 @@
         </div>
         <div class="scroll-box browse-scroll">
           <table id="browse-table">
-            <tr><th>记得的</th><th>在哪</th><th style="text-align:right">剩余</th><th>时间</th></tr>
+            <tr><th>时刻</th><th>记得的</th><th>在哪</th><th style="text-align:right">剩余</th><th>时间</th></tr>
           </table>
         </div>
       </div>
@@ -4079,7 +4079,7 @@
         if (countEl) countEl.textContent = '共 ' + hits.length + ' 条';
         const head = table.querySelector('tr:first-child')?.outerHTML || '';
         if (!hits.length) {
-          table.innerHTML = head + '<tr><td colspan="4" style="color:var(--dim)">没搜到</td></tr>';
+          table.innerHTML = head + '<tr><td colspan="5" style="color:var(--dim)">没搜到</td></tr>';
           return;
         }
         table.innerHTML =
@@ -4088,12 +4088,18 @@
             .map((m) => {
               const pts = m.points || [];
               const vis = pts.filter((p) => p.visible).length;
+              // 时刻（几时几分）放在这一条最前面，日期（几月几日）留在最后 ——
+              // 时刻让人一眼排出先后，日期负责定位是哪天。
+              const clock = m.created_at
+                ? new Date(m.created_at).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false })
+                : '';
               const when = m.created_at
                 ? new Date(m.created_at).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' })
                 : '';
               const pct = pts.length > 0 ? Math.round((vis / pts.length) * 100) : 0;
               return (
-                '<tr><td>' + esc(String(m.content).slice(0, 60)) + '</td>' +
+                '<tr><td class="muted nowrap">' + clock + '</td>' +
+                '<td>' + esc(String(m.content).slice(0, 60)) + '</td>' +
                 '<td class="nowrap"><span class="pill">' + esc(m.ringLabel || RING_LABEL[m.ring] || m.ring) + '</span></td>' +
                 '<td class="num" title="还剩 ' + vis + ' / ' + pts.length + ' 个点">' + pct + '%</td>' +
                 '<td class="muted">' + when + '</td></tr>'
