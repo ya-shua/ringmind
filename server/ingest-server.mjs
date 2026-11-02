@@ -30,7 +30,8 @@
  *   同目录的 ingest.json（可选，没有就用默认值）：
  *   {
  *     "owners": ["1234567890"],        // 谁是主人，进了库会加【管理员】前缀
- *     "mergeWindowMs": 300000,         // 同一段对话多久内合并成一条（默认 5 分钟）
+ *     "mergeWindowMs": 300000,         // 一段对话最长多久（从第一条算起，默认 5 分钟）
+ *     "gapMs": 90000,                  // 相邻两条隔超过这么久就断（默认 90 秒）
  *     "maxChars": 600,                 // 单条封顶
  *     "port": 5188,
  *     "host": "127.0.0.1"
@@ -74,7 +75,8 @@ const ROOT = resolve(HERE, "..");
 
 const DEFAULTS = {
   owners: [],            // 主人 QQ 号：写库时补【管理员】
-  mergeWindowMs: 300_000, // 同一段对话 5 分钟内合并
+  mergeWindowMs: 300_000, // 一段对话最长 5 分钟（从第一条算起）
+  gapMs: 90_000,          // 相邻两条隔超过 90 秒就断（换话题了）
   maxChars: 600,
   port: 5188,
   host: "127.0.0.1",
@@ -99,6 +101,9 @@ function loadConfig() {
   }
   if (process.env.RING_MERGE_WINDOW_MS) {
     cfg.mergeWindowMs = Number(process.env.RING_MERGE_WINDOW_MS) || cfg.mergeWindowMs;
+  }
+  if (process.env.RING_GAP_MS) {
+    cfg.gapMs = Number(process.env.RING_GAP_MS) || cfg.gapMs;
   }
   return cfg;
 }
@@ -214,7 +219,7 @@ function getDb() {
 }
 
 /** 每段对话的最后一条 ring4 记忆 + 它的时间，用于合并 */
-const mergeState = new Map(); // convKey + "|" + (self?1:0) → { memoryId, lastTs }
+const mergeState = new Map(); // convKey + "|" + (self?1:0) → { memoryId, lastTs, firstTs }
 
 /** 格式化成总库里的一行：2026/10/31 22:38｜私聊：【管理员】某人：正文 */
 function vaultLine(msg) {
@@ -247,10 +252,17 @@ function ingest(msg, database = getDb()) {
   const prev = mergeState.get(slot);
   // 时间往回跳（补历史、跨天补录）不算"同一段对话"，宁可新开一条，
   // 否则一条新记忆会被塞进 5 分钟前那段里，顺序全乱。
+  //
+  // 两道闸一起卡（2026-11-03 定）：
+  //   ① 跟上一句隔不超过 gapMs（默认 90 秒）—— 停了一会儿就是换话题了
+  //   ② 距这条对话的第一句不超过 mergeWindowMs（默认 5 分钟）—— 聊再久也不能无限长
+  // 只卡 ② 的话，一小时里断断续续的闲聊会被拼成一大坨（实测最长 814 字）；
+  // 加上 ①，同一天闲聊最长降到 145 字。
   const withinWindow =
     prev &&
     msg.ts >= prev.lastTs &&
-    msg.ts - prev.lastTs <= CFG.mergeWindowMs;
+    msg.ts - prev.lastTs <= CFG.gapMs &&
+    msg.ts - prev.firstTs <= CFG.mergeWindowMs;
 
   if (withinWindow) {
     // 追加到上一条：原文接上新的，再写回去
@@ -283,7 +295,7 @@ function ingest(msg, database = getDb()) {
     at: msg.ts,
     skipVault: true, // 原文已经进总库了，别再写一遍
   });
-  mergeState.set(slot, { memoryId: mem.id, lastTs: msg.ts });
+  mergeState.set(slot, { memoryId: mem.id, lastTs: msg.ts, firstTs: msg.ts });
   return { action: "new", memoryId: mem.id };
 }
 
@@ -324,6 +336,7 @@ const server = http.createServer(async (req, res) => {
         memories: getDb().stats(),
         owners: CFG.owners,
         mergeWindowMs: CFG.mergeWindowMs,
+        gapMs: CFG.gapMs,
       });
     }
 
@@ -372,7 +385,7 @@ if (isMain) {
     console.log("[ring-ingest] listening http://" + CFG.host + ":" + (argPort ?? CFG.port));
     console.log("  库: " + DB_PATH);
     console.log("  主人: " + (CFG.owners.length ? CFG.owners.join(", ") : "（没配，谁的都不打【管理员】）"));
-    console.log("  合并窗口: " + Math.round(CFG.mergeWindowMs / 1000) + " 秒");
+    console.log("  合并窗口: " + Math.round(CFG.mergeWindowMs / 1000) + " 秒（从首句算）/ 间隔 " + Math.round(CFG.gapMs / 1000) + " 秒");
     console.log("  现有: vault=" + getDb().store.vaultCount() + "  memories=" + JSON.stringify(getDb().stats()));
   });
 
