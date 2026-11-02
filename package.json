@@ -1,6 +1,6 @@
 {
   "name": "ringmind",
-  "version": "1.3.5",
+  "version": "1.4.0",
   "private": true,
   "type": "module",
   "description": "环形的心 — 一个会遗忘的记忆库，给 AI 角色用",
@@ -16,7 +16,7 @@
     "node": ">=22.5.0"
   },
   "scripts": {
-    "test": "node --test tests/core.test.js tests/server.test.js tests/sea.test.js tests/update.test.js tests/gateway.test.js tests/ingest.test.js",
+    "test": "node --test tests/core.test.js tests/server.test.js tests/sea.test.js tests/update.test.js tests/gateway.test.js tests/ingest.test.js tests/usage.test.js",
     "start": "node src/web/server.js",
     "serve": "node src/web/server.js",
     "ingest": "node server/ingest-server.mjs"

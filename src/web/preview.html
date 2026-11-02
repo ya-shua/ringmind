@@ -298,15 +298,17 @@
   #page-db.active > .card.same-h { align-self: stretch; display: flex; flex-direction: column; }
 
   /* 库列表：三列并排后空间有限，限高滚动 */
-  /* 固定露两条，第 3 条起在框里滚 —— 布局高度就不跟着库数量变了 */
+  /* 高度固定预留两行 —— 建新库卡片也不长个，第 3 条起在框里下滑 */
   .db-list-scroll {
-    max-height: 119px;   /* 2 × 56 + 7 间距 */
+    height: 123px;   /* 2 × 56 + 7 间距 + 上下 2px */
     overflow-y: auto;
     overflow-x: hidden;
-    padding-right: 8px;
+    padding: 2px 8px 2px 2px;
     flex: none;
     scrollbar-width: thin;
     scrollbar-color: rgba(255,255,255,.26) transparent;
+    background: rgba(255,255,255,.015);
+    border-radius: 10px;
   }
   .db-list-scroll::-webkit-scrollbar { width: 8px; }
   .db-list-scroll::-webkit-scrollbar-track { background: transparent; }
@@ -622,6 +624,236 @@
     color: var(--faint);
   }
 
+  /* ── 导入页（QQ 聊天记录导入 · qmi）──────────────────
+     只用 :root 里定义过的变量；旧向导那套样式整体换掉了。 */
+
+  #page-import.active {
+    /* 左边跑流程，右边立着配置 —— 右栏略微放宽，填 URL 不至于挤成一团 */
+    grid-template-columns: minmax(0, 1.5fr) minmax(360px, 1fr);
+    /* 页面全局是 align-items:start（各页自己撑高），导入页要左右两卡等高，恢复拉伸 */
+    align-items: stretch;
+  }
+  @media (max-width: 980px) {
+    #page-import.active { grid-template-columns: minmax(0, 1fr); }
+  }
+  .qmi-side { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+  /* 左右两张卡等高、铺满一整页：内容多的一侧定行高，另一侧跟齐；内容自己撑开，不溢出 */
+  .qmi-side > .card { flex: 1; min-height: 0; }
+  #qmi-main-card, .qmi-side { min-height: calc(100vh - 330px); }
+
+  /* 导入历史行：左边信息、右边撤回 */
+  .qmi-hist-main { flex: 1; min-width: 0; }
+  .qmi-hist-main b { display: block; }
+  .qmi-hist-main i {
+    display: block; font-style: normal;
+    font-size: 11.5px; color: var(--faint); margin-top: 1px;
+  }
+
+  /* 环境英雄卡：大圆点 + 结论 + 三个事实格 */
+
+  /* 模式选择：两张并排的可点卡片 */
+  #qmi-env-card { padding: 11px 20px; }
+  .qmi-hero { display: flex; align-items: center; gap: 16px; }
+  .qmi-dot {
+    width: 14px; height: 14px; border-radius: 50%; flex: none;
+    background: var(--faint);
+    transition: background .2s, box-shadow .2s;
+  }
+  #qmi-env-card.ok .qmi-dot { background: var(--ok); box-shadow: 0 0 0 6px rgba(110, 231, 160, .13); }
+  #qmi-env-card.warn .qmi-dot { background: var(--warn); box-shadow: 0 0 0 6px rgba(255, 192, 107, .13); }
+  #qmi-env-card.bad .qmi-dot { background: var(--danger); box-shadow: 0 0 0 6px rgba(255, 125, 125, .13); }
+  .qmi-hero-body { flex: 1; min-width: 0; }
+  .qmi-hero-title { font-size: 14.5px; font-weight: 600; }
+  .qmi-hero-sub { color: var(--dim); font-size: 12px; margin-top: 2px; }
+  .qmi-facts { display: flex; gap: 22px; margin-right: 6px; }
+  .qmi-fact { text-align: center; }
+  .qmi-fact b { display: block; font-size: 13px; font-variant-numeric: tabular-nums; }
+  .qmi-fact span { font-size: 11px; color: var(--faint); }
+
+  /* 安装清单：缺哪步点哪步，做完自动打勾 */
+  .qmi-step-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 2px;
+    border-bottom: 1px solid var(--border-soft);
+  }
+  .qmi-step-row:last-child { border-bottom: none; }
+  .qmi-step-ico { font-size: 16px; color: var(--faint); flex: none; width: 22px; text-align: center; }
+  .qmi-step-row.done .qmi-step-ico { color: var(--ok); }
+  .qmi-step-row.doing .qmi-step-ico { color: var(--warn); }
+  .qmi-step-body { flex: 1; min-width: 0; }
+  .qmi-step-body b { display: block; font-size: 13px; font-weight: 600; }
+  .qmi-step-body span { font-size: 11.5px; color: var(--dim); }
+  .qmi-step-row.done .qmi-step-body b {
+    color: var(--dim); font-weight: 500;
+    text-decoration: line-through;
+    text-decoration-color: rgba(110, 231, 160, .55);
+  }
+
+  /* 进度条：真阶段真进度，等不到数字就走流动条 */
+  .qmi-progress { margin-top: 12px; }
+  .qmi-track {
+    height: 6px; border-radius: 3px;
+    background: rgba(255, 255, 255, .07);
+    overflow: hidden;
+  }
+  .qmi-track i {
+    display: block; height: 100%; width: 0%;
+    border-radius: 3px;
+    background: linear-gradient(90deg, var(--accent), #5b93e8);
+    transition: width .3s cubic-bezier(.4, 0, .2, 1);
+  }
+  .qmi-track.indet i { width: 34%; animation: qmiSlide 1.15s ease-in-out infinite; }
+  @keyframes qmiSlide { 0% { transform: translateX(-110%); } 100% { transform: translateX(320%); } }
+
+  /* 标签页 */
+  .qmi-tabs { display: flex; gap: 6px; margin-bottom: 12px; }
+  .qmi-tab {
+    padding: 6px 14px; border-radius: 9px; border: 1px solid transparent;
+    background: none; color: var(--dim); font-size: 12.5px; cursor: pointer;
+  }
+  .qmi-tab:hover { color: var(--text); }
+  .qmi-tab.on { background: var(--glass-strong); border-color: var(--border); color: var(--text); }
+
+  /* 会话 / 任务列表：四个标签页统一定高 —— 跟导出页一个尺寸，内容多就在框里滑 */
+  .qmi-list {
+    height: 160px; overflow-y: auto;
+    border: 1px solid var(--border-soft); border-radius: 10px;
+    background: rgba(255, 255, 255, .02);
+    display: flex; flex-direction: column;
+  }
+  .qmi-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 13px; font-size: 13px; cursor: pointer;
+    border-bottom: 1px solid rgba(255, 255, 255, .03);
+    flex: none;
+  }
+  .qmi-row:last-child { border-bottom: none; }
+  .qmi-row:hover { background: var(--glass-hover); }
+  .qmi-row.on { background: rgba(91, 147, 232, .14); }
+  .qmi-row b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .qmi-row .qmi-meta {
+    margin-left: auto; flex: none;
+    color: var(--faint); font-size: 11.5px; font-variant-numeric: tabular-nums;
+  }
+  /* 「聊过」小标：最近会话 = 本机确定有记录的 */
+  .qmi-recent {
+    margin-left: 7px; padding: 1px 7px; border-radius: 999px;
+    font-size: 10.5px; font-weight: 400;
+    background: rgba(110, 231, 160, .12); color: var(--ok);
+  }
+  .qmi-empty { margin: auto; padding: 22px; text-align: center; color: var(--faint); font-size: 12.5px; }
+  /* 缓冲区 / 任务 / 历史三页跟导出页一般高 —— 切标签卡片不跳 */
+  #qmi-tab-stash, #qmi-tab-tasks, #qmi-tab-hist { min-height: 370px; }
+
+  /* 四步流程：顶部横排步骤条 —— 点哪步滚到哪步 */
+  .qmi-stepper {
+    display: flex; align-items: center; gap: 6px;
+    margin-bottom: 10px; flex-wrap: wrap;
+  }
+  .qmi-step-it {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px; border-radius: 999px;
+    border: 1px solid transparent; background: none;
+    color: var(--dim); font-size: 12px; cursor: pointer; font-family: inherit;
+  }
+  .qmi-step-it:hover { color: var(--text); background: var(--glass); }
+  .qmi-step-it i {
+    font-style: normal; width: 18px; height: 18px; border-radius: 50%;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 11px; background: rgba(255,255,255,.08); color: var(--dim);
+    flex: none;
+  }
+  .qmi-step-it.ready i { background: rgba(127, 176, 255, .16); color: var(--accent); }
+  .qmi-step-it.done i { background: var(--ok); color: #06101f; }
+  .qmi-step-it.dim { opacity: .45; }
+  .qmi-step-line { flex: 1; min-width: 8px; height: 1px; background: var(--border-soft); }
+
+  /* ③④ 两节和 ② 之间用细线分段 */
+  .qmi-sec {
+    margin-top: 13px; padding-top: 12px;
+    border-top: 1px solid var(--border-soft);
+  }
+
+  /* 反馈区：位置提前预留（进度/提示/警告都在这个框里），内容过长时框内下滑 */
+  .qmi-feedback {
+    min-height: 84px; max-height: 84px;
+    overflow-y: auto;
+    margin-top: 8px;
+    padding: 2px;
+  }
+
+  /* 选会话 / 范围 / 执行行：间距收紧，导出按钮必须在一屏里 */
+  .qmi-pick-row { display: flex; gap: 9px; margin-bottom: 6px; }
+  .qmi-pick-row input { flex: 1; }
+  .qmi-range-row { display: flex; align-items: center; gap: 9px; margin-top: 8px; flex-wrap: wrap; }
+  .qmi-run-row { display: flex; align-items: center; gap: 12px; margin-top: 8px; }
+  .qmi-run-row .field-hint { flex: 1; min-width: 0; text-align: right; }
+
+  /* 结果条 */
+  .qmi-result {
+    margin-top: 14px; padding: 11px 14px; border-radius: 10px;
+    font-size: 12.5px; line-height: 1.7;
+    display: flex; align-items: center; gap: 12px;
+  }
+  .qmi-result.ok { color: var(--ok); background: rgba(110, 231, 160, .07); border: 1px solid rgba(110, 231, 160, .2); }
+  .qmi-result.bad { color: var(--danger); background: rgba(255, 125, 125, .06); border: 1px solid rgba(255, 125, 125, .22); }
+  .qmi-result span { flex: 1; min-width: 0; }
+
+  /* 模式选择：两张并排的可点卡片 */
+  .qmi-mode-row { display: flex; gap: 9px; margin-top: 12px; flex-wrap: wrap; }
+  .qmi-mode {
+    flex: 1; min-width: 200px;
+    display: flex; align-items: center; gap: 9px;
+    padding: 10px 12px;
+    border: 1px solid var(--border-soft); border-radius: 10px;
+    background: rgba(255, 255, 255, .02);
+    cursor: pointer; font-size: 13px;
+  }
+  .qmi-mode:has(input:checked) { border-color: rgba(127, 176, 255, .55); background: rgba(127, 176, 255, .06); }
+  .qmi-mode input { accent-color: var(--accent); margin: 0; }
+  .qmi-mode b { display: block; font-size: 13px; }
+  .qmi-mode i { display: block; font-style: normal; font-size: 11.5px; color: var(--dim); margin-top: 1px; }
+
+  /* 人格配置卡：两列字段 + 全宽提示词 */
+  .qmi-grid2 {
+    display: grid; grid-template-columns: 1.6fr 1fr; gap: 10px 14px;
+    margin-bottom: 10px;
+  }
+  @media (max-width: 760px) { .qmi-grid2 { grid-template-columns: 1fr; } }
+  .qmi-fld { display: flex; flex-direction: column; gap: 5px; font-size: 12px; color: var(--dim); }
+  .qmi-fld input, .qmi-fld textarea {
+    height: 34px; padding: 0 10px;
+    border: 1px solid var(--border); border-radius: 8px;
+    background: rgba(255, 255, 255, .05); color: var(--text); font-size: 13px;
+  }
+  /* 提示词框定高：写再多也只在框里下滑，不把卡片撑长 */
+  .qmi-fld textarea {
+    height: 88px; padding: 8px 10px; line-height: 1.6;
+    resize: none; overflow-y: auto;
+    font-family: inherit;
+  }
+  .qmi-fld input:focus, .qmi-fld textarea:focus {
+    outline: none;
+    border-color: rgba(127, 176, 255, .55);
+    background: rgba(127, 176, 255, .06);
+  }
+  .qmi-persona-prompt { margin-bottom: 12px; }
+  /* 人格卡被拉长时，让提示词框吃掉剩余高度 —— 卡里不留大段空白；
+     高度跟着卡片走，写再多也只是框里下滑，不撑长窗口 */
+  #qmi-persona-card { display: flex; flex-direction: column; }
+  #qmi-persona-card .qmi-persona-prompt { flex: 1; display: flex; flex-direction: column; }
+  #qmi-persona-card .qmi-persona-prompt textarea { flex: 1; min-height: 88px; height: auto; }
+  /* 人格卡里的字段改成单列全宽：一格从左边缘拉到右边缘 */
+  #qmi-persona-card .qmi-fld { margin-bottom: 10px; }
+  #qmi-persona-card .qmi-grid2 { margin-bottom: 0; }
+  #qmi-persona-card .qmi-grid2 .qmi-fld { margin-bottom: 0; }
+  #qmi-persona-card .btn-row { margin-top: 2px; }
+  .qmi-key-state { justify-content: flex-end; }
+  .qmi-key-state b { font-size: 12.5px; color: var(--text); font-variant-numeric: tabular-nums; }
+
+  /* 侧卡 */
+  #qmi-bots-card input { width: 100%; margin-bottom: 9px; }
+
   /* 自定义模式那组滑块：两列排 */
   .cfg-grid {
     display: grid;
@@ -695,6 +927,10 @@
   }
 
   .field:last-child { border-bottom: none; padding-bottom: 0; }
+
+  /* hidden 属性要压过任何显式的 display ——
+     .field 是 display:grid，会把它自己身上的 [hidden] 盖掉，所以这里强制一下 */
+  [hidden] { display: none !important; }
   .field:first-of-type { padding-top: 0; }
 
   .field-label { font-size: 13px; }
@@ -1381,6 +1617,9 @@
   }
 
   /* ── 右下角保存 ─────────────────────────── */
+  /* 保存栏只属于记忆模式 / 容量 / 时间三页 —— 别的页一概不出现，
+     免得浮在导入、数据库这些跟它无关的页面上 */
+  body:not(.sb-on) .savebar { display: none !important; }
   .savebar {
     position: fixed;
     right: 26px;
@@ -1454,7 +1693,7 @@
   <div class="brand">
     <div class="brand-mark"></div>
     环形的心
-    <small>Ringmind v1.0.1</small>
+    <small id="app-ver">Ringmind v—</small>
   </div>
   <div class="grow"></div>
   <button class="chip" id="cur-db" type="button" title="打开数据库页看库文件和存放位置">
@@ -1478,6 +1717,7 @@
     <div class="nav-item" data-page="task"><span class="ico">⟳</span>记忆更新</div>
 
     <div class="nav-group-label" style="margin-top:16px">其他</div>
+    <div class="nav-item" data-page="import"><span class="ico">⇪</span>导入</div>
     <div class="nav-item" data-page="db"><span class="ico">⛁</span>数据库</div>
     <div class="nav-item" data-page="token"><span class="ico">¥</span>Token 消耗</div>
   </aside>
@@ -1781,6 +2021,10 @@
           <div><div class="field-label">意识到自己忘了</div><div class="field-hint">打开后才会把「想不起来」这件事说出来</div></div>
           <div class="switch on" data-cfg="metaMemory"></div>
         </div>
+        <div class="field" id="vault-access-row" hidden>
+          <div><div class="field-label">可查询总库</div><div class="field-hint">打开后，她能把原始存档翻回来。只有自定义模式下这一行才出现。</div></div>
+          <div class="switch" data-cfg="vaultAccessible"></div>
+        </div>
       </div>
 
       <!-- 配额：原来单独一页，并到这里 -->
@@ -1827,20 +2071,20 @@
 
       <div class="card same-h">
         <div class="card-title">当前库</div>
-        <div class="card-desc">一个记忆 = 一个文件夹，彼此隔离。</div>
+        <div class="card-desc">一个记忆 = 一个文件夹，彼此隔离</div>
 
         <div class="field">
-          <div><div class="field-label">记忆库</div><div class="field-hint">当前挂着的那个</div></div>
+          <div><div class="field-label">启用记忆库：</div></div>
           <div class="field-hint" id="db-name" style="align-self:center">—</div>
         </div>
 
         <div class="field">
-          <div><div class="field-label">存放位置</div><div class="field-hint">库文件所在文件夹</div></div>
+          <div><div class="field-label">存放位置</div></div>
           <div class="field-hint" id="db-dir" style="align-self:center;word-break:break-all">—</div>
         </div>
 
         <div class="field">
-          <div><div class="field-label">切换到</div><div class="field-hint">选好点右边保存才生效</div></div>
+          <div><div class="field-label">切换到库</div></div>
           <div style="display:flex;gap:8px;align-items:center">
             <select id="db-switch" style="flex:1;min-width:0"></select>
             <button class="btn primary" id="db-switch-save" type="button" style="flex:none" disabled>保存</button>
@@ -1850,7 +2094,7 @@
 
       <div class="card same-h">
         <div class="card-title">新建库</div>
-        <div class="card-desc">会在下面那个位置建一个同名文件夹，新库放里面。</div>
+        <div class="card-desc">会在下面那个位置建一个同名文件夹，新库放里面</div>
 
         <div class="field">
           <div><div class="field-label">库名</div><div class="field-hint">名字会成为文件夹名</div></div>
@@ -1861,7 +2105,7 @@
         </div>
 
         <div class="field">
-          <div><div class="field-label">放在哪</div><div class="field-hint">留空 = 跟当前库的上级目录一样</div></div>
+          <div><div class="field-label">存放文字</div></div>
           <div style="display:flex;gap:8px;align-items:center">
             <input type="text" id="new-db-parent" placeholder="留空 = 用默认位置" style="flex:1;min-width:0">
             <button class="btn" id="new-db-pick" type="button" style="flex:none">浏览…</button>
@@ -1871,13 +2115,13 @@
 
       <div class="card same-h">
         <div class="card-title">所有库 / 搬家</div>
-        <div class="card-desc">点一下就能切过去。要换盘、换文件夹时，用下面的「搬整个数据目录」。</div>
+        <div class="card-desc">点一下就切过去；要连盘带文件夹搬走，用下面的搬家。</div>
 
         <div id="db-list" class="db-list db-list-scroll">正在读…</div>
 
         <div class="db-split">
           <div class="field-label">搬整个数据目录</div>
-          <div class="field-hint" style="margin:4px 0 7px">连库、令牌、存档一起搬走，逐个文件核对大小和哈希。日常切库用上面的列表就行。</div>
+          <div class="field-hint" style="margin:4px 0 7px">连库、令牌、存档一起搬；日常切库用上面的列表。</div>
           <div style="display:flex;gap:8px;align-items:center">
             <input type="text" id="db-path" value="正在读…" placeholder="输入路径，或点右边浏览…" style="flex:1;min-width:0">
             <button class="btn" id="pick-folder" type="button" style="flex:none">浏览…</button>
@@ -1894,33 +2138,223 @@
         </div>
       </div>
 
-      <div class="card same-h">
+      <div class="card same-h locked" id="vault-card">
         <div class="card-title">总库</div>
-        <div class="card-desc">原始存档，不对角色开放，仅供查看。关掉的话，掉了的记忆就真的没了。</div>
+        <div class="card-desc">原始存档备份</div>
         <div class="field">
           <div><div class="field-label">开启总库</div></div>
           <div class="switch on" data-cfg="vault.enabled"></div>
         </div>
         <div class="field">
-          <div><div class="field-label">条数上限</div><div class="field-hint">0 = 不限制；设了数字就按先后删</div></div>
-          <input type="number" value="0">
-        </div>
-        <div class="field">
-          <div><div class="field-label">允许查询</div><div class="field-hint">由「记忆模式」决定：切到永不忘记模式才开放，这里改不了</div></div>
-          <span class="pill" id="vault-access">看模式</span>
+          <div>
+            <div class="field-label">
+              条数上限
+              <button class="btn ghost btn-sm" id="vault-unlock" type="button">调整</button>
+            </div>
+            <div class="field-hint">0 = 不限制；设了数字就按先后删</div>
+          </div>
+          <input type="number" value="0" readonly>
         </div>
       </div>
 
       <div class="card same-h">
         <div class="card-title">维护</div>
-        <div class="card-desc">导出就是把这个库存成一个 .db 文件，放哪都行。恢复会用它整个替换现在的内容——换之前会先把现在的存一份，名字带「恢复前」。</div>
-        <div class="btn-row" style="flex-direction:column;align-items:stretch;gap:8px;margin-top:4px">
-          <button class="btn" id="btn-export" type="button">导出备份</button>
-          <button class="btn" id="btn-restore" type="button">从备份恢复</button>
+        <div class="card-desc">导出/导入 数据</div>
+        <div class="btn-row" style="flex-direction:column;align-items:stretch;gap:22px;margin-top:22px">
+          <button class="btn" id="btn-export" type="button" style="justify-content:center;height:44px;font-size:13.5px">导出备份</button>
+          <button class="btn" id="btn-restore" type="button" style="justify-content:center;height:44px;font-size:13.5px">从备份恢复</button>
           <input type="file" id="restore-file" accept=".db,.sqlite,.sqlite3" hidden />
         </div>
       </div>
 
+
+    </section>
+
+    <!-- ══════ 导入（QQ 聊天记录）══════ -->
+    <section class="page" id="page-import">
+      <div class="page-head">
+        <h1>导入</h1>
+        <p>把 QQ 聊天记录送进记忆库 —— 选会话、选时间，剩下的一条龙自己跑完。</p>
+      </div>
+
+      <div class="card wide" id="qmi-env-card">
+        <div class="qmi-hero">
+          <span class="qmi-dot"></span>
+          <div class="qmi-hero-body">
+            <div class="qmi-hero-title" id="qmi-env-title">正在检测 QCE 环境…</div>
+            <div class="qmi-hero-sub" id="qmi-env-sub">QQ Chat Exporter · 127.0.0.1:40653</div>
+          </div>
+          <div class="qmi-facts">
+            <div class="qmi-fact"><b id="qmi-fact-qce">—</b><span>QCE 接口</span></div>
+            <div class="qmi-fact"><b id="qmi-fact-qq">—</b><span>QQ 进程</span></div>
+            <div class="qmi-fact"><b id="qmi-fact-token">—</b><span>令牌</span></div>
+          </div>
+          <button class="btn ghost btn-sm" id="qmi-recheck" type="button">重新检测</button>
+        </div>
+      </div>
+
+      <div class="card wide" id="qmi-setup-card" hidden>
+        <div class="card-title">先把环境搭起来</div>
+        <div class="card-desc">缺哪步点哪步，做完这里会自动检测、自动推进。</div>
+        <div class="qmi-step-row" id="qmi-step-install">
+          <span class="qmi-step-ico">①</span>
+          <div class="qmi-step-body">
+            <b>安装 QQ Chat Exporter</b>
+            <span id="qmi-install-note">从 GitHub 下载（约 43 MB），解压到项目 vendor/qce，不进仓库。</span>
+          </div>
+          <button class="btn btn-sm" id="qmi-do-install" type="button">下载安装</button>
+        </div>
+        <div class="qmi-step-row" id="qmi-step-launch">
+          <span class="qmi-step-ico">②</span>
+          <div class="qmi-step-body">
+            <b>退出 QQ，再从这儿启动带注入的 QQ</b>
+            <span id="qmi-launch-note">启动前 QQ 要全部退干净；启动后登录你要导出的那个号，等十几秒注入生效。</span>
+          </div>
+          <button class="btn btn-sm" id="qmi-do-launch" type="button">启动 QCE</button>
+        </div>
+        <div class="qmi-progress" id="qmi-progress" hidden>
+          <div class="qmi-track" id="qmi-track"><i id="qmi-bar"></i></div>
+          <div class="field-hint" id="qmi-progress-text" style="margin-top:6px"></div>
+        </div>
+      </div>
+
+      <div class="card" id="qmi-main-card">
+        <div class="qmi-tabs">
+          <button class="qmi-tab on" data-tab="pick" type="button">导出向导</button>
+          <button class="qmi-tab" data-tab="tasks" type="button">从 QCE 任务导入</button>
+          <button class="qmi-tab" data-tab="hist" type="button">导入历史</button>
+        </div>
+
+        <div id="qmi-tab-pick">
+          <div class="qmi-stepper">
+            <button class="qmi-step-it" data-goto="1" type="button"><i>①</i><span>选会话</span></button>
+            <span class="qmi-step-line"></span>
+            <button class="qmi-step-it" data-goto="2" type="button"><i>②</i><span>导出到缓冲区</span></button>
+            <span class="qmi-step-line"></span>
+            <button class="qmi-step-it" data-goto="3" type="button"><i>③</i><span>选择导入模式</span></button>
+            <span class="qmi-step-line"></span>
+            <button class="qmi-step-it" data-goto="4" type="button"><i>④</i><span>写进记忆库</span></button>
+          </div>
+
+          <div class="qmi-pick-row" id="qmi-sec-1">
+            <input type="text" id="qmi-search" placeholder="搜会话 / 好友 / 群 / QQ 号…">
+            <button class="btn" id="qmi-reload-friends" type="button">刷新</button>
+          </div>
+          <div class="qmi-list" id="qmi-list"><div class="qmi-empty">环境通了会自动拉好友列表。</div></div>
+
+          <div class="qmi-range-row" id="qmi-sec-2">
+            <span class="field-hint" style="margin:0">时间范围</span>
+            <select id="qmi-range">
+              <option value="7">近一周</option>
+              <option value="30">近一个月</option>
+              <option value="90">近三个月</option>
+              <option value="365" selected>近一年</option>
+              <option value="-1">自定义…</option>
+            </select>
+            <input type="date" id="qmi-start" hidden>
+            <span id="qmi-sep" hidden>→</span>
+            <input type="date" id="qmi-end" hidden>
+          </div>
+          <div class="field-hint" id="qmi-range-hint">带「聊过」标的是本机确实有记录的会话，排最前。私聊先试漫游、拉不到自动转本机；群聊直接走本机记录。</div>
+          <div class="qmi-run-row">
+            <button class="btn primary" id="qmi-run" type="button">导出到缓冲区</button>
+            <button class="btn ghost" id="qmi-stop" type="button" hidden>停止</button>
+            <span class="field-hint" id="qmi-run-state"></span>
+          </div>
+          <!-- 反馈区：位置提前预留好，进度/提示/警告出现时卡片不再被挤长 -->
+          <div class="qmi-feedback">
+            <div class="qmi-progress" id="qmi-run-progress" hidden>
+              <div class="qmi-track" id="qmi-run-track"><i id="qmi-run-bar"></i></div>
+            </div>
+            <div class="qmi-result ok" id="qmi-run-result" hidden>
+              <span id="qmi-run-result-text"></span>
+            </div>
+          </div>
+
+          <div id="qmi-mode-block" class="qmi-sec" hidden>
+            <div class="qmi-mode-row">
+              <label class="qmi-mode"><input type="radio" name="qmi-stash-mode" value="bulk" checked><span><b>全量计入</b><i>每条都进圈，不判断</i></span></label>
+              <label class="qmi-mode"><input type="radio" name="qmi-stash-mode" value="persona"><span><b>人格筛选</b><i>她读完整段，挑值得记的写成记忆</i></span></label>
+            </div>
+            <div class="qmi-range-row">
+              <span class="field-hint" style="margin:0">她是谁</span>
+              <input type="text" id="qmi-stash-bots" style="flex:1" placeholder="这些号说的话算「她」，逗号隔开；留空就按会话对面那一位算">
+            </div>
+            <div class="field-hint">换了号就把新旧号都填上。这一步只影响「谁说的」怎么算，随时能改。</div>
+          </div>
+          <div class="field-hint" id="qmi-stash-empty-hint" hidden>缓冲区还空着 —— 完成 ② 就会出现在这里。</div>
+
+          <div id="qmi-stash-block" class="qmi-sec" hidden>
+            <div class="qmi-pick-row">
+              <button class="btn" id="qmi-stash-refresh" type="button">刷新</button>
+              <span class="field-hint" style="margin:0 0 0 auto">点一份，按上面选好的模式写进库</span>
+            </div>
+            <div class="qmi-list" id="qmi-stashlist"><div class="qmi-empty">缓冲区还空着。</div></div>
+            <div class="qmi-run-row">
+              <button class="btn primary" id="qmi-stash-import" type="button" disabled>写进记忆库</button>
+              <button class="btn danger" id="qmi-stash-del" type="button" disabled>从缓冲区删掉</button>
+              <span class="field-hint" id="qmi-stash-state"></span>
+            </div>
+            <!-- 反馈区：位置预留，同 ② -->
+            <div class="qmi-feedback">
+              <div class="qmi-progress" id="qmi-stash-progress" hidden>
+                <div class="qmi-track" id="qmi-stash-track"><i id="qmi-stash-bar"></i></div>
+              </div>
+              <div class="qmi-result ok" id="qmi-stash-result" hidden>
+                <span id="qmi-stash-result-text"></span>
+                <button class="btn btn-sm" id="qmi-goto-browse" type="button">去看看</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="qmi-tab-tasks" hidden>
+          <div class="qmi-pick-row">
+            <button class="btn" id="qmi-relist" type="button">刷新列表</button>
+            <button class="btn ghost" id="qmi-openui" type="button">打开 QCE 界面 ↗</button>
+            <span class="field-hint" style="margin:0 0 0 auto">在 QCE 界面里导出的，会出现在下面</span>
+          </div>
+          <div class="qmi-list" id="qmi-tasklist"><div class="qmi-empty">点「刷新列表」看看 QCE 那边导好的东西。</div></div>
+          <div class="qmi-run-row">
+            <button class="btn primary" id="qmi-absorb" type="button" disabled>写进记忆库</button>
+            <button class="btn" id="qmi-task-stash" type="button" disabled>放进缓冲区</button>
+            <span class="field-hint" id="qmi-task-state"></span>
+          </div>
+          <div class="qmi-result ok" id="qmi-task-result" hidden>
+            <span id="qmi-task-result-text"></span>
+            <button class="btn btn-sm" id="qmi-goto-browse2" type="button">去看看</button>
+          </div>
+        </div>
+
+        <div id="qmi-tab-hist" hidden>
+          <div class="qmi-pick-row">
+            <button class="btn" id="qmi-hist-refresh" type="button">刷新</button>
+            <span class="field-hint" style="margin:0 0 0 auto">导错了一口就能撤 —— 按批删，撤了能重导</span>
+          </div>
+          <div class="qmi-list" id="qmi-histlist"><div class="qmi-empty">点「刷新」看看导入过什么。</div></div>
+          <div class="qmi-result ok" id="qmi-hist-result" hidden>
+            <span id="qmi-hist-result-text"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="qmi-side">
+      <div class="card" id="qmi-persona-card">
+        <div class="card-title">她的人格 <span class="pill">人格筛选用</span></div>
+        <label class="qmi-fld">接口地址<input type="text" id="qmi-persona-url" placeholder="https://api.deepseek.com"></label>
+        <label class="qmi-fld">模型<input type="text" id="qmi-persona-model" placeholder="deepseek-chat"></label>
+        <div class="qmi-grid2">
+          <label class="qmi-fld">API Key<input type="password" id="qmi-persona-key" placeholder="填了才换，留空保持不变" autocomplete="off"></label>
+          <div class="qmi-fld qmi-key-state"><span>现有钥匙</span><b id="qmi-persona-key-mask">没配</b></div>
+        </div>
+        <label class="qmi-fld qmi-persona-prompt">她的人格提示词（留空就只用任务说明）<textarea id="qmi-persona-prompt" rows="3" placeholder="例：你叫大肥鱼，说话软软的，记住的事要有你在场的温度……"></textarea></label>
+        <div class="btn-row">
+          <button class="btn btn-sm" id="qmi-persona-save" type="button">保存</button>
+          <button class="btn btn-sm ghost" id="qmi-persona-test" type="button">试一句</button>
+          <span class="field-hint" id="qmi-persona-note"></span>
+        </div>
+      </div>
+      </div><!-- /.qmi-side -->
     </section>
 
     <!-- ══════ 记忆更新 ══════ -->
@@ -1973,7 +2407,7 @@
 
       <div class="banner info wide">
         <span class="bico">ℹ</span>
-        <span><b>数据仅供参考，不一定准确</b>（按本机账本算的，模型名缺失时按 flash 价兜底）。<br>数据来自本机 DSH 用量账本（<code>~/.dsh/dsh-usage/usage-ledger.json</code>），<b>只读</b>，每次刷新自动重读。高峰时段是工作日 9:00–12:00 和 14:00–18:00，单价是空闲的 2 倍。</span>
+        <span><b>数据仅供参考，不一定准确</b>（按本机账本算的，模型名缺失时按 flash 价兜底）。<br>数据来自本机 DSH 用量账本，<b>只读</b>，每次刷新自动重读。高峰时段是工作日 9:00–12:00 和 14:00–18:00，单价是空闲的 2 倍。</span>
       </div>
 
       <div class="btn-row" style="margin-bottom:14px">
@@ -2195,6 +2629,11 @@
   }
 
   // 导航
+  // 保存栏跟着页面走：只有带设置表单的三页（模式/容量/时间）才亮出来
+  const SB_PAGES = ['mode', 'rings', 'time'];
+  function syncSavebar(pageId) {
+    document.body.classList.toggle('sb-on', SB_PAGES.includes(pageId));
+  }
   document.querySelectorAll('.nav-item').forEach((item) => {
     item.addEventListener('click', async (ev) => {
       // 有没保存的改动就拦一下：保存是「点按钮才写库」，切页不会自动存
@@ -2213,9 +2652,22 @@
       item.classList.add('active');
       const page = document.getElementById('page-' + item.dataset.page);
       if (page) page.classList.add('active');
+      syncSavebar(item.dataset.page);
       window.scrollTo({ top: 0, behavior: 'smooth' });
     });
   });
+  // 初始落在哪一页（HTML 里默认 active 的那个），保存栏跟着定
+  syncSavebar((document.querySelector('.nav-item.active') || {}).dataset?.page);
+
+  // 支持直接用链接开某一页：preview.html#db / #health / #token……
+  // 也方便我自己截某页的图来核对样式
+  {
+    const want = decodeURIComponent((location.hash || '').replace(/^#/, ''));
+    if (want) {
+      const t = [...document.querySelectorAll('.nav-item')].find((x) => x.dataset.page === want);
+      if (t) setTimeout(() => t.click(), 300);
+    }
+  }
 
   // 滑条 + 手动输入框
   document.querySelectorAll('.slider-row').forEach((row) => {
@@ -2281,16 +2733,33 @@
   document.querySelectorAll('.switch').forEach((sw) => {
     if (sw.classList.contains('disabled')) return; // 没接字段的，点了也只换个色，没意义
     sw.addEventListener('click', async () => {
-      // 关掉自动整理：先说清楚后果
-      if (sw.dataset.cfg === 'compaction.enabled' && sw.classList.contains('on')) {
-        const ok = await openModal(
-          '关掉自动整理？',
-          '关掉之后，记忆不会再自动往下圈推。\n\n' +
+      // 记忆更新页的「开启自动整理」：这页没有保存栏 —— 当场弹利弊、取消/保存、立即落库
+      if (sw.dataset.cfg === 'compaction.enabled') {
+        const wantOn = !sw.classList.contains('on');
+        const body = wantOn
+          ? '每天到点自动把记忆往下一圈推，推到底的就忘掉。\n\n' +
+            '这是规则驱动的整理，不调用大模型，不产生任何 API 费用。\n\n点「保存」才生效。'
+          : '关掉之后，记忆不再自动往下圈推。\n\n' +
             '结果是：记下的东西会一直留在原来的圈里 —— 不会变淡，也不会被忘掉。\n\n' +
-            '「总库」和已经忘掉的记忆不受影响。随时可以再打开。',
-          { ok: '关掉', cancel: '保持开启', danger: true }
+            '「总库」和已经忘掉的记忆不受影响，随时可以再打开。\n\n点「保存」才生效。';
+        const save = await openModal(
+          wantOn ? '打开自动整理？' : '关掉自动整理？',
+          body,
+          { ok: '保存', cancel: '取消', danger: !wantOn }
         );
-        if (!ok) return;
+        if (!save) return;   // 取消：开关不动
+        sw.classList.toggle('on');
+        try {
+          await api('/api/config', {
+            method: 'POST',
+            body: JSON.stringify({ compaction: { enabled: wantOn } }),
+          });
+          markClean();
+        } catch (e) {
+          sw.classList.toggle('on');   // 没存上：拨回去
+          await openModal('没存上', e?.message || String(e), { ok: '知道了' });
+        }
+        return;
       }
 
       // 元记忆：跟当前模式的默认值相反时，说清楚再确认。
@@ -2335,16 +2804,49 @@
         }
       }
 
+
+      // 可查询总库：只有「自定义」模式真的接进检索。
+      // 三档固定模式里它只是个标记 —— 点了也翻不到原文，所以要先说清楚。
+      // 自定义模式里它是真生效的，所以「打开」这一步要过一道保险。
+      if (sw.dataset.cfg === 'vaultAccessible') {
+        const want = !sw.classList.contains('on');
+
+        if (selectedMode !== 'custom') {
+          const label = MODE_LABEL[selectedMode] || '当前模式';
+          const ok0 = await openModal(
+            want ? '这里开了也不会生效' : '关掉了，不过本来也没生效',
+            '「' + label + '」是固定模式，总库查询在这一档里只是个标记 —— ' +
+              '不管开还是关，她都翻不到原始聊天记录。\n\n' +
+              '真的要让总库接入检索，得切到「自定义」模式，那里可以正常开关。\n\n' +
+              '现在还要改这个标记吗？',
+            { ok: want ? '仍然打开' : '仍然关掉', cancel: '算了', danger: !want }
+          );
+          if (!ok0) return;
+        } else if (want) {
+          // 保险：这是唯一能让原始聊天原文被翻回来的开关，开之前必须明确点一次
+          const ok1 = await openModal(
+            '打开总库查询？',
+            '开了之后，她能逐条翻回聊天的原始记录 —— 包括已经忘掉的。\n\n' +
+              '这是整套里唯一能让她看见原文的开关。开着，「忘掉」就不再是忘掉了。\n\n' +
+              '确认要开？',
+            { ok: '确认打开', cancel: '先别开', danger: true }
+          );
+          if (!ok1) return;
+        }
+      }
       sw.classList.toggle('on');
       markDirty();
     });
   });
 
-  // 改运行时间：先警告，确认后才解锁输入框
+  // 改运行时间：点「改时间」解锁 → 选定时间 → 弹「利弊 + 取消/保存」→ 保存才落库
+  // 不走右下角保存栏 —— 那栏只在记忆模式/容量/时间三页出现
   (() => {
     const btn = document.getElementById('btn-unlock-time');
     const inp = document.getElementById('compaction-time');
     if (!btn || !inp) return;
+
+    let prevTime = inp.value;   // 改动前的值，取消时退回它
 
     const lock = () => {
       inp.disabled = true;
@@ -2352,24 +2854,55 @@
       btn.classList.remove('primary');
     };
 
-    btn.addEventListener('click', async () => {
+    btn.addEventListener('click', () => {
       if (!inp.disabled) { lock(); return; }   // 已经开着，再点就是锁上
-
-      const ok = await openModal(
-        '改运行时间？',
-        '每天到这个点，记忆会自动往下一圈推 —— 推到底的那些就忘掉了。\n\n' +
-          '挪动时间会改变这个节奏：\n' +
-          '· 往后挪，旧的记忆会多留一会儿\n' +
-          '· 往前挪，会更早开始掉圈\n\n' +
-          '改完记得点下面的「保存」。',
-        { ok: '我要改', cancel: '算了' }
-      );
-      if (!ok) return;
-
       inp.disabled = false;
       btn.textContent = '锁上';
       btn.classList.add('primary');
       inp.focus();
+    });
+
+    // 点进输入框（选择器弹出）那一刻记下旧值
+    inp.addEventListener('focus', () => { prevTime = inp.value; });
+
+    // 选了新时间：简单利弊 + 取消 / 保存，点了保存才生效
+    inp.addEventListener('change', async () => {
+      if (inp.disabled) return;
+      const next = inp.value;
+      if (!next || next === prevTime) return;
+
+      const [oh, om] = prevTime.split(':').map(Number);
+      const [nh, nm] = next.split(':').map(Number);
+      let effect = '';
+      if (nh * 60 + nm > oh * 60 + om) {
+        effect = '往后挪 —— 旧的记忆会多留一会儿，整理来得更晚。\n\n';
+      } else if (nh * 60 + nm < oh * 60 + om) {
+        effect = '往前挪 —— 整理来得更早，到点就开始掉圈、忘掉。\n\n';
+      }
+
+      const save = await openModal(
+        '把整理时间改成 ' + next + '？',
+        '每天到这个点，记忆自动往下一圈推，推到底的就忘掉。\n\n' + effect + '点「保存」才生效。',
+        { ok: '保存', cancel: '取消' }
+      );
+      if (!save) {
+        inp.value = prevTime;   // 取消：退回原值
+        return;
+      }
+
+      const [hh, mm] = next.split(':').map(Number);
+      try {
+        await api('/api/config', {
+          method: 'POST',
+          body: JSON.stringify({ compaction: { hour: hh, minute: mm } }),
+        });
+        prevTime = next;
+        lock();
+        markClean();
+      } catch (e) {
+        inp.value = prevTime;
+        await openModal('没存上', e?.message || String(e), { ok: '知道了' });
+      }
     });
   })();
 
@@ -2438,6 +2971,18 @@
 
   // ── 私聊/群聊配额：默认锁住，点「调整」才放开 ──────────
   // 那两个滑块不分模式都显示，又容易手滑带过去，所以默认不给拖。
+  // ── 总库条数上限：默认锁着，点「调整」才给改 ──────────
+  const vaultCard = document.getElementById('vault-card');
+  const vaultBtn = document.getElementById('vault-unlock');
+  if (vaultCard && vaultBtn) {
+    vaultBtn.addEventListener('click', () => {
+      const locked = vaultCard.classList.toggle('locked');
+      vaultBtn.textContent = locked ? '调整' : '完成';
+      const inp = vaultCard.querySelector('input[type="number"]');
+      if (inp) inp.readOnly = locked;
+    });
+  }
+
   const quotaCard = document.getElementById('quota-card');
   const quotaBtn = document.getElementById('quota-unlock');
   if (quotaCard && quotaBtn) {
@@ -2519,6 +3064,16 @@
 
     return patch;
   }
+
+  // 版本号：页面曾经写死 v1.0.1，代码走到 1.4 了它还挂着老号。改成从后端读。
+  (async function paintVersion() {
+    try {
+      const r = await fetch('/api/version');
+      const d = await r.json();
+      const el = document.getElementById('app-ver');
+      if (el && d && d.ok && d.version) el.textContent = 'Ringmind v' + d.version;
+    } catch { /* 拿不到就留着 v— */ }
+  })();
 
   async function api(path, opts = {}) {
     const r = await fetch(path, {
@@ -2754,9 +3309,9 @@
       return;
     }
 
-    if (!d || !d.ok) {
+    if (!d) {
       const el = document.getElementById('tk-cost-sub');
-      if (el) el.textContent = (d && d.error) || '没有数据';
+      if (el) el.textContent = '没有数据';
       return;
     }
 
@@ -2766,7 +3321,7 @@
     };
 
     put('tk-cost', fmtMoney(d.totals.cost));
-    put('tk-cost-sub', d.records + ' 次调用 · ' + (d.firstAt ? fmtWhen(d.firstAt) + ' 起' : ''));
+    put('tk-cost-sub', (d.totals?.calls ?? d.records ?? 0) + ' 次调用 · ' + (d.firstAt ? fmtWhen(d.firstAt) + ' 起' : ''));
     put('tk-tokens', fmtTok(d.totals.tokens));
     put('tk-tokens-sub', '输入 ' + fmtTok(d.totals.input) + ' / 输出 ' + fmtTok(d.totals.output));
     put('tk-hit', ((d.totals.hitRate || 0) * 100).toFixed(1) + '%');
@@ -3045,6 +3600,9 @@
         metaSw.classList.toggle('on', META_DEFAULT[nextMode] ?? true);
       }
 
+      // 「可查询总库」只在自定义模式里露出来 —— 三档固定模式里它不生效，就不摆给人看
+      showVaultRow(nextMode);
+
       document.querySelectorAll('.mode').forEach((c) => c.classList.remove('active'));
       card.classList.add('active');
       selectedMode = nextMode;
@@ -3055,6 +3613,12 @@
     });
   });
 
+  /** 可查询总库那一行：只有自定义模式才露出来 */
+  function showVaultRow(mode) {
+    const row = document.getElementById('vault-access-row');
+    if (row) row.hidden = mode !== 'custom';
+  }
+
   /** 库里现在是哪个模式，就把哪张卡点亮 */
   function fillMode(mode) {
     selectedMode = mode;
@@ -3062,12 +3626,7 @@
     document.querySelectorAll('.mode').forEach((c) => {
       c.classList.toggle('active', c.dataset.mode === mode);
     });
-    const va = document.getElementById('vault-access');
-    if (va) {
-      const open = mode === 'never-forget';
-      va.textContent = open ? '开放' : '关闭';
-      va.className = 'pill' + (open ? ' ok' : '');
-    }
+    showVaultRow(mode);
     // 下面那排数值跟着换
     renderModeFacts(mode);
   }
@@ -3118,8 +3677,7 @@
       item('闲聊圈', m.fade ? '100% → 80%' : ring4 + '%', ring4, 'var(--c-r4)', m.fade ? '五天里每天再淡 5%' : '一直保持这么多') +
       item('模糊圈', ring5 + '%', ring5, 'var(--c-r5)', ring5 >= 100 ? '原文全看得见' : '只剩这么多原文，其余靠猜') +
       item('回忆圈', recall + '%', recall, 'var(--c-recall)', '随机留下这么多点，钩子全在') +
-      item('缓冲能捞回', buf5 + '%', buf5, 'var(--accent)', buf5 >= 100 ? '一提示就全回来' : '能想起来一部分') +
-      item('总库', m.vaultAccessible ? '能查' : '关着', m.vaultAccessible ? 100 : 0, 'rgba(255,255,255,.35)', m.vaultAccessible ? '什么都能翻回来' : '看得到原始记录，但查不回来');
+      item('缓冲能捞回', buf5 + '%', buf5, 'var(--accent)', buf5 >= 100 ? '一提示就全回来' : '能想起来一部分');
   }
 
   // 保存
@@ -3266,10 +3824,11 @@
         const tLock = document.getElementById('time-preset-lock-hint');
         if (tLock) tLock.textContent = presetLockHint.textContent;
       }
-      const renameBtn = document.getElementById('preset-rename');
-      const delBtn = document.getElementById('preset-del');
-      if (renameBtn) renameBtn.hidden = isBuiltin;
-      if (delBtn) delBtn.hidden = isBuiltin;
+      // 改名 / 删掉：两页各有一对按钮，得一起改，不然时间页那两个永远是隐藏的
+      for (const id of ['preset-rename', 'preset-del', 'time-preset-rename', 'time-preset-del']) {
+        const b = document.getElementById(id);
+        if (b) b.hidden = isBuiltin;
+      }
     } catch {
       /* 读不到就先不改动界面 */
     }
@@ -3351,6 +3910,13 @@
           if (hit) tp.value = id;
           else if (isBuiltin) tp.value = id;
         }
+      }
+
+      // 切方案就立刻改按钮显隐：系统模板不给改名/删，自己的方案才给
+      const pickedBuiltin = (PRESET_CACHE?.builtin || []).some((p) => p.id === id);
+      for (const bid of ['preset-rename', 'preset-del', 'time-preset-rename', 'time-preset-del']) {
+        const b = document.getElementById(bid);
+        if (b) b.hidden = pickedBuiltin;
       }
 
       const st = document.querySelector('.savebar .status');
@@ -3638,7 +4204,844 @@
     }
   });
 
-  /** 换存放位置：选文件夹 → 展开确认 → 整目录搬过去 */
+  // ══════ 导入页：QQ 聊天记录（环境 → 一条龙导入）══════
+  // 旧的三步向导整个换掉了。这里的思路：
+  //   · 环境是状态，不是步骤 —— 英雄卡常显，没就绪才把安装清单摆出来
+  //   · 导入是一条龙：建任务 → 轮询 → 下载 → 入库，中间不再让人跳去 QCE 界面
+  //   · 从 QCE 任务导入保留为第二个标签页，兼容在 QCE 界面里手动导出的情况
+  {
+    const $qmi = (i) => document.getElementById(i);
+
+    const qmiState = {
+      probe: null,             // /api/qq-import/probe 的结果
+      installed: false,
+      qq: { any: false, uins: [] },
+      friends: [],
+      pick: null,              // 选中的好友 {uid, uin, name}
+      tasks: [],
+      taskPick: null,
+      stash: [],               // 缓冲区里歇脚的导出文件
+      stashPick: null,
+      botsCache: [],           // 「她是谁」配置缓存（写库那一步用）
+      history: [],
+      loadedFriends: false,    // 就绪后只自动拉一次列表
+      busy: false,             // 一条龙跑着
+      stopFlag: false,
+    };
+
+    // ── 环境：探测 + 画英雄卡和清单 ──
+    async function qmiRefreshEnv() {
+      const [st, probe] = await Promise.all([
+        api('/api/qq-import/install-status').catch(() => null),
+        api('/api/qq-import/probe').catch(() => null),
+      ]);
+      qmiState.probe = probe || { state: 'error' };
+      qmiState.installed = Boolean(st && st.installed);
+      qmiState.qq = (st && st.qq) || { any: false, uins: [] };
+      qmiPaintEnv();
+      if (qmiState.probe.state === 'ready' && !qmiState.loadedFriends) {
+        qmiState.loadedFriends = true;
+        qmiLoadFriends();
+      }
+    }
+
+    function qmiPaintEnv() {
+      const st = qmiState.probe.state || 'error';
+      const ok = st === 'ready';
+      const uins = qmiState.qq.uins || [];
+
+      const card = $qmi('qmi-env-card');
+      card.classList.remove('ok', 'warn', 'bad');
+      card.classList.add(ok ? 'ok' : qmiState.installed ? 'warn' : 'bad');
+
+      const title = $qmi('qmi-env-title');
+      const sub = $qmi('qmi-env-sub');
+      if (st === 'ready') {
+        title.textContent = '环境就绪，可以直接导';
+        sub.textContent = 'QCE 在 ' + (qmiState.probe.base || '127.0.0.1:40653') + '，注入正常';
+      } else if (st === 'unauthorized') {
+        title.textContent = '令牌无效';
+        sub.textContent = 'QCE 在跑，但令牌对不上 —— 在它那边重跑一次，或点「重装」';
+      } else if (st === 'no-token') {
+        title.textContent = qmiState.installed ? '装好了，但还没启动过' : '还没装 QQ Chat Exporter';
+        sub.textContent = qmiState.installed ? '把 QQ 退干净，从下面清单启动它' : '从下面清单的第一步装起';
+      } else if (st === 'offline') {
+        title.textContent = '装了，但连不上';
+        sub.textContent = 'QQ 开着吗？先全部退出，再从下面清单启动带注入的 QQ';
+      } else {
+        title.textContent = '探测失败';
+        sub.textContent = qmiState.probe.error || '等一下再点「重新检测」';
+      }
+
+      $qmi('qmi-fact-qce').textContent = st === 'ready' ? '通' : st === 'offline' ? '不通' : '—';
+      $qmi('qmi-fact-qq').textContent = uins.length ? uins.length + ' 个号' : '没在跑';
+      $qmi('qmi-fact-token').textContent = qmiState.probe.hasToken ? '有' : '没有';
+
+      // 清单：就绪了整个收起来
+      $qmi('qmi-setup-card').hidden = ok;
+      const sInstall = $qmi('qmi-step-install');
+      const sLaunch = $qmi('qmi-step-launch');
+      sInstall.classList.toggle('done', qmiState.installed);
+      sInstall.classList.toggle('doing', !qmiState.installed);
+      $qmi('qmi-do-install').textContent = qmiState.installed ? '重装' : '下载安装';
+      sLaunch.classList.toggle('done', ok);
+      sLaunch.classList.toggle('doing', !ok && qmiState.installed);
+      $qmi('qmi-launch-note').textContent = uins.length && !ok
+        ? '⚠ 现在还在跑的号：' + uins.join('、') + '。先把它们全部退出，再点启动。'
+        : '启动前 QQ 要全部退干净；启动后登录你要导出的那个号，等十几秒注入生效。';
+
+      $qmi('qmi-run').disabled = !ok || qmiState.busy;
+    }
+
+    // ── 清单动作 ──
+    $qmi('qmi-do-install').addEventListener('click', async () => {
+      const go = await openModal(
+        '下载 QQ Chat Exporter',
+        '要从 GitHub 下载（约 43 MB），解压到项目下的 vendor/qce。\n' +
+          '它不是这个项目的一部分，也不算你的代码；vendor/ 已经在 .gitignore 里，不会进仓库。\n' +
+          '下载完还得用它的脚本重启一次 QQ 才能导。现在开始？',
+        { ok: '开始下载', cancel: '算了' }
+      );
+      if (!go) return;
+      const btn = $qmi('qmi-do-install');
+      btn.disabled = true;
+      try {
+        const r = await api('/api/qq-import/install', { method: 'POST', body: '{}' });
+        if (!r.started) throw new Error('已经有一个安装在跑了');
+        $qmi('qmi-setup-card').hidden = false;
+        qmiProgress('准备中…', 2, false);
+        const timer = setInterval(async () => {
+          try {
+            const s = await api('/api/qq-import/install-status');
+            if (['resolving', 'downloading', 'extracting'].includes(s.phase)) {
+              qmiProgress(s.message || s.phase, s.pct || 0, false);
+            } else if (s.phase === 'done') {
+              clearInterval(timer);
+              qmiProgress('装好了', 100, false);
+              setTimeout(qmiHideProgress, 1500);
+              await qmiRefreshEnv();
+            } else if (s.phase === 'error') {
+              clearInterval(timer);
+              qmiProgress('没装成：' + (s.error || ''), 0, false);
+              await qmiRefreshEnv();
+            }
+          } catch { /* 下一轮再试 */ }
+        }, 1000);
+      } catch (e) {
+        qmiProgress('没开始：' + (e.message || e), 0, false);
+        setTimeout(qmiHideProgress, 2500);
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    $qmi('qmi-do-launch').addEventListener('click', async () => {
+      const btn = $qmi('qmi-do-launch');
+      btn.disabled = true;
+      try {
+        await api('/api/qq-import/launch', { method: 'POST', body: '{}' });
+        $qmi('qmi-launch-note').textContent =
+          'QQ 拉起来了 —— 登录你要导出的号，等十几秒注入生效，上面会自己变绿。';
+        setTimeout(qmiRefreshEnv, 8000);
+      } catch (e) {
+        $qmi('qmi-launch-note').textContent = '没启动成：' + (e.message || e);
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    function qmiProgress(text, pct, indet) {
+      $qmi('qmi-progress').hidden = false;
+      $qmi('qmi-track').classList.toggle('indet', Boolean(indet));
+      $qmi('qmi-bar').style.width = Math.max(0, Math.min(100, pct || 0)) + '%';
+      $qmi('qmi-progress-text').textContent = text || '';
+    }
+    function qmiHideProgress() {
+      $qmi('qmi-progress').hidden = true;
+    }
+
+    // ── 选会话：最近会话（真正聊过的）在前，没聊过的好友殿后 ──
+    async function qmiLoadFriends() {
+      const box = $qmi('qmi-list');
+      box.innerHTML = '<div class="qmi-empty">读列表中…</div>';
+      try {
+        const d = await api('/api/qq-import/contacts');
+        qmiState.friends = Array.isArray(d.list) ? d.list : [];
+        qmiState.pick = null;
+      } catch (e) {
+        qmiState.friends = [];
+        box.innerHTML = '<div class="qmi-empty"></div>';
+        box.firstChild.textContent = '读不到：' + (e.message || e);
+      }
+      qmiRenderFriends();
+    }
+
+    function qmiRenderFriends() {
+      const box = $qmi('qmi-list');
+      const kw = ($qmi('qmi-search').value || '').trim().toLowerCase();
+      const list = kw
+        ? qmiState.friends.filter(
+            (x) =>
+              String(x.name || '').toLowerCase().includes(kw) ||
+              String(x.uin || '').includes(kw) ||
+              String(x.remark || '').toLowerCase().includes(kw)
+          )
+        : qmiState.friends;
+      if (!list.length) {
+        box.innerHTML =
+          '<div class="qmi-empty">' + (qmiState.friends.length ? '没匹配的' : '列表是空的') + '</div>';
+        return;
+      }
+      // 昵称/群名/备注都是对面 QQ 用户自己起的，一律 esc —— 这是实测 XSS 的教训
+      box.innerHTML = list
+        .slice(0, 300)
+        .map((x) => {
+          const on = qmiState.pick && qmiState.pick.uid === x.uid && (qmiState.pick.chatType || 1) === (x.chatType || 1);
+          const tag = x.kind === 'group' ? '[群]' : '';
+          const recent = x.recent ? '<span class="qmi-recent">聊过</span>' : '';
+          return (
+            '<div class="qmi-row' + (on ? ' on' : '') + '" data-key="' + esc((x.chatType || 1) + ':' + x.uid) + '">' +
+            '<b>' + tag + esc(x.name || '') + recent + '</b>' +
+            '<span class="qmi-meta">' + esc(x.uin || '') + '</span></div>'
+          );
+        })
+        .join('');
+      box.querySelectorAll('.qmi-row').forEach((el) => {
+        el.addEventListener('click', () => {
+          const key = el.dataset.key;
+          qmiState.pick =
+            qmiState.friends.find((x) => (x.chatType || 1) + ':' + x.uid === key) || null;
+          qmiRenderFriends();
+        });
+      });
+    }
+
+    // ── 时间范围 ──
+    function qmiReadRange() {
+      const v = $qmi('qmi-range').value;
+      const end = Math.floor(Date.now() / 1000);
+      if (v !== '-1') return { start: end - Number(v) * 86400, end };
+      const s = $qmi('qmi-start').value;
+      const e = $qmi('qmi-end').value;
+      if (!s || !e) return null;
+      const start = Math.floor(new Date(s + 'T00:00:00').getTime() / 1000);
+      const endC = Math.floor(new Date(e + 'T23:59:59').getTime() / 1000);
+      if (!start || !endC || endC <= start) return null;
+      return { start, end: endC };
+    }
+
+    // ── 进度显示：pfx 区分是哪条流水线（run = 导出到缓冲区 / stash = 写进记忆库）──
+    function qmiPhase(pfx, text, pct, indet) {
+      $qmi('qmi-' + pfx + '-state').textContent = text;
+      $qmi('qmi-' + pfx + '-track').classList.toggle('indet', Boolean(indet));
+      $qmi('qmi-' + pfx + '-bar').style.width = Math.max(0, Math.min(100, pct || 0)) + '%';
+    }
+
+    function qmiShowResult(kind, text) {
+      const el = $qmi('qmi-run-result');
+      el.hidden = false;
+      el.classList.toggle('ok', kind === 'ok');
+      el.classList.toggle('bad', kind !== 'ok');
+      $qmi('qmi-run-result-text').textContent = text;
+    }
+
+    async function qmiRun() {
+      if (qmiState.busy) return;
+      if (!qmiState.pick) return qmiShowResult('bad', '先在列表里选一个要导的人。');
+      const range = qmiReadRange();
+      if (!range) return qmiShowResult('bad', '时间范围不对 —— 自定义的话起止日期都要给。');
+
+      qmiState.busy = true;
+      qmiState.stopFlag = false;
+      $qmi('qmi-run').disabled = true;
+      $qmi('qmi-stop').hidden = false;
+      $qmi('qmi-run-progress').hidden = false;
+      $qmi('qmi-run-result').hidden = true;
+      const t0 = Date.now();
+      try {
+        qmiPhase('run', '给「' + (qmiState.pick.name || '会话') + '」建导出任务…', 8, false);
+        // 直接读本机 QQ 数据库：快（几秒）、稳，好友群聊都行。
+        // 漫游（QQ 服务器）要会话开过漫游才有货，扫描还慢 —— 不做默认。
+        const created = await api('/api/qq-import/export', {
+          method: 'POST',
+          body: JSON.stringify({
+            peerUid: qmiState.pick.uid,
+            chatType: qmiState.pick.chatType || 1,
+            name: qmiState.pick.name || '',
+            start: range.start,
+            end: range.end,
+            mode: 'local',
+          }),
+        });
+        const taskId = created.taskId || created.taskID || created.id || (created.task && created.task.taskId);
+        if (!taskId) throw new Error('QCE 没回任务 id —— 去「从 QCE 任务导入」看看那边成了没');
+
+        const dl = await qmiWaitTask(taskId, t0, 'run');
+        qmiPhase('run', '取回文件，放进缓冲区…', 82, true);
+        let st;
+        try {
+          st = await api('/api/qq-import/stash', {
+            method: 'POST',
+            body: JSON.stringify({ taskId, downloadUrl: dl || undefined }),
+          });
+        } catch (e) {
+          if (String(e.message).includes('没有可读的文本')) {
+            throw new Error(
+              '本机没有这个会话在这个时间段的记录。' +
+                (qmiState.pick.kind === 'group'
+                  ? ''
+                  : '如果你在 QQ 里开了聊天记录漫游，可以去 QCE 界面用漫游方式导出，再从「从 QCE 任务导入」收进来。')
+            );
+          }
+          throw e;
+        }
+        qmiPhase('run', '完成', 100, false);
+        qmiShowResult(
+          'ok',
+          '已放进缓冲区：「' + (st.chatName || '会话') + '」可读 ' + st.kept + ' 条（原始 ' +
+            st.messages + ' 条）。下面 ③ 选导入模式，④ 写进记忆库。'
+        );
+        qmiLoadStash();
+      } catch (e) {
+        qmiPhase('run', '', 0, false);
+        qmiShowResult('bad', '没导成：' + (e.message || e));
+      } finally {
+        qmiState.busy = false;
+        $qmi('qmi-run').disabled = qmiState.probe.state !== 'ready';
+        $qmi('qmi-stop').hidden = true;
+        $qmi('qmi-run-progress').hidden = true;
+      }
+    }
+
+    function qmiWaitTask(taskId, t0, pfx) {
+      return new Promise((resolve, reject) => {
+        const timer = setInterval(async () => {
+          const sec = Math.round((Date.now() - t0) / 1000);
+          if (qmiState.stopFlag) {
+            clearInterval(timer);
+            reject(new Error('停了（QCE 那边的任务会自己跑完，不碍事）'));
+            return;
+          }
+          if (sec > 600) {
+            clearInterval(timer);
+            reject(new Error('导了十分钟还没完 —— 去「从 QCE 任务导入」看看任务列表'));
+            return;
+          }
+          try {
+            const d = await api('/api/qq-import/task?id=' + encodeURIComponent(taskId));
+            const t = d && typeof d === 'object' ? d : {};
+            const status = String(t.status || t.taskStatus || t.state || '').toLowerCase();
+            if (/complet|finish|done/.test(status)) {
+              clearInterval(timer);
+              let dl = t.downloadUrl || t.filePath || '';
+              if (!dl) {
+                // 任务详情不带地址就去任务列表里找
+                try {
+                  const all = await api('/api/qq-import/tasks');
+                  const hit = (all.tasks || []).find((x) => x.taskId === taskId);
+                  if (hit) dl = hit.downloadUrl || hit.filePath || '';
+                } catch { /* 拿不到就算了 */ }
+              }
+              resolve(dl);
+              return;
+            }
+            if (/fail|error|cancel/.test(status)) {
+              clearInterval(timer);
+              const why = t.error || t.errorMessage || t.message || t.failReason || '';
+              reject(new Error(
+                'QCE 那边的导出任务失败了' + (why ? '：' + why : '') +
+                  '。常见原因：这个会话的漫游记录不在 QQ 服务器上（太久远、或对方关了漫游）、QCE 刚注入完还没就绪。' +
+                  '可以把时间范围改小一点再试，或去 QCE 界面直接导出后走「从 QCE 任务导入」。'
+              ));
+              return;
+            }
+            const n = Number(t.messageCount || t.count || 0);
+            qmiPhase(pfx, '导出中…' + (n ? n + ' 条 · ' : '') + '已 ' + sec + 's', 30 + Math.min(40, sec), true);
+          } catch { /* 单次没轮到不算失败 */ }
+        }, 1500);
+      });
+    }
+
+    function qmiWaitPersona(t0, pfx) {
+      return new Promise((resolve, reject) => {
+        const timer = setInterval(async () => {
+          try {
+            const d = await api('/api/qq-import/persona-status');
+            const pct = d.batchTotal ? 40 + Math.round((d.batch / d.batchTotal) * 55) : 40;
+            if (d.running) {
+              qmiPhase(
+                pfx,
+                '她读第 ' + d.batch + '/' + d.batchTotal + ' 批… 已记 ' + d.remembered + ' 件 · 已 ' +
+                  Math.round((Date.now() - t0) / 1000) + 's',
+                pct,
+                false
+              );
+              return;
+            }
+            clearInterval(timer);
+            resolve(d);
+          } catch (e) {
+            clearInterval(timer);
+            reject(e);
+          }
+        }, 1500);
+      });
+    }
+
+    // ── 第二个标签页：从 QCE 任务导入 ──
+    async function qmiListTasks() {
+      const box = $qmi('qmi-tasklist');
+      box.innerHTML = '<div class="qmi-empty">正在读…</div>';
+      try {
+        const d = await api('/api/qq-import/tasks');
+        qmiState.tasks = d.tasks || [];
+      } catch (e) {
+        qmiState.tasks = [];
+        box.innerHTML = '<div class="qmi-empty"></div>';
+        box.firstChild.textContent = '读不到：' + (e.message || e);
+      }
+      qmiRenderTasks();
+    }
+
+    function qmiRenderTasks() {
+      const box = $qmi('qmi-tasklist');
+      if (!qmiState.tasks.length) {
+        box.innerHTML =
+          '<div class="qmi-empty">QCE 那边还没有导出过的文件。去它的界面导一段，再回来点「刷新列表」。</div>';
+        return;
+      }
+      box.innerHTML = qmiState.tasks
+        .map((t, i) => {
+          const on = qmiState.taskPick && qmiState.taskPick.taskId === t.taskId;
+          const kind = t.chatType === 2 ? '群聊' : '私聊';
+          const when = t.createdAt ? new Date(t.createdAt).toLocaleString('zh-CN', { hour12: false }) : '';
+          return (
+            '<div class="qmi-row' + (on ? ' on' : '') + '" data-i="' + i + '">' +
+            '<b>' + esc(t.sessionName || t.fileName || '（没名字）') + '</b>' +
+            '<span class="qmi-meta">' + esc(kind) + ' · ' + Number(t.messageCount || 0) + ' 条 · ' + esc(when) + '</span></div>'
+          );
+        })
+        .join('');
+      box.querySelectorAll('.qmi-row').forEach((el) => {
+        el.addEventListener('click', () => {
+          qmiState.taskPick = qmiState.tasks[Number(el.dataset.i)] || null;
+          $qmi('qmi-absorb').disabled = !qmiState.taskPick;
+          $qmi('qmi-task-stash').disabled = !qmiState.taskPick;
+          qmiRenderTasks();
+        });
+      });
+    }
+
+    async function qmiAbsorb() {
+      const t = qmiState.taskPick;
+      if (!t || qmiState.busy) return;
+      const go = await openModal(
+        '写进记忆库',
+        (t.sessionName || t.fileName || '这个文件') + '，共 ' + (t.messageCount || 0) + ' 条消息。\n' +
+          '按「全量计入」写进去吗？（只写没导过的；重复导不会重复加）',
+        { ok: '写进去', cancel: '先放着' }
+      );
+      if (!go) return;
+      const btn = $qmi('qmi-absorb');
+      btn.disabled = true;
+      $qmi('qmi-task-state').textContent = '正在取文件、写库…';
+      const el = $qmi('qmi-task-result');
+      try {
+        const res = await api('/api/qq-import/absorb', {
+          method: 'POST',
+          body: JSON.stringify({
+            mode: 'bulk',
+            taskId: t.taskId,
+            downloadUrl: t.downloadUrl || undefined,
+            filePath: t.filePath || undefined,
+          }),
+        });
+        el.hidden = false;
+        el.classList.add('ok');
+        el.classList.remove('bad');
+        $qmi('qmi-task-result-text').textContent =
+          '写完了：新增 ' + res.added + ' 条，跳过 ' + res.skipped + ' 条。现在库里 ' + res.memories + ' 条。';
+        $qmi('qmi-goto-browse2').hidden = false;
+      } catch (e) {
+        el.hidden = false;
+        el.classList.add('bad');
+        el.classList.remove('ok');
+        $qmi('qmi-task-result-text').textContent = '没写进去：' + (e.message || e);
+        $qmi('qmi-goto-browse2').hidden = true;
+      } finally {
+        $qmi('qmi-task-state').textContent = '';
+        btn.disabled = !qmiState.taskPick;
+      }
+    }
+
+    // ── 她是谁：住在「缓冲区 → 写进记忆库」那一步，导出用不上它 ──
+    async function qmiLoadBots() {
+      try {
+        const d = await api('/api/qq-import/config');
+        qmiState.botsCache = d.bots || [];
+      } catch {
+        qmiState.botsCache = [];
+      }
+    }
+
+    // ── 缓冲区（流程 ③④）：有货才亮出「选模式」和「写进记忆库」──
+    async function qmiLoadStash() {
+      try {
+        const d = await api('/api/qq-import/stash');
+        qmiState.stash = d.list || [];
+      } catch {
+        qmiState.stash = [];
+      }
+      if (qmiState.stashPick && !qmiState.stash.find((s) => s.id === qmiState.stashPick.id)) {
+        qmiState.stashPick = null;
+      }
+      qmiRenderStash();
+    }
+
+    function qmiRenderStash() {
+      const box = $qmi('qmi-stashlist');
+      const has = qmiState.stash.length > 0;
+      $qmi('qmi-mode-block').hidden = !has;
+      $qmi('qmi-stash-block').hidden = !has;
+      $qmi('qmi-stash-empty-hint').hidden = has;
+      qmiPaintStepper(has);
+      if (!has) {
+        box.innerHTML = '<div class="qmi-empty">缓冲区还空着。</div>';
+        return;
+      }
+      box.innerHTML = qmiState.stash
+        .map((s, i) => {
+          const on = qmiState.stashPick && qmiState.stashPick.id === s.id;
+          const span =
+            s.minTs && s.maxTs
+              ? new Date(s.minTs).toLocaleDateString('zh-CN') + ' ~ ' + new Date(s.maxTs).toLocaleDateString('zh-CN')
+              : '';
+          const kb = s.bytes > 1048576 ? (s.bytes / 1048576).toFixed(1) + ' MB' : Math.round((s.bytes || 0) / 1024) + ' KB';
+          return (
+            '<div class="qmi-row' + (on ? ' on' : '') + '" data-i="' + i + '">' +
+            '<div class="qmi-hist-main"><b>' + esc(s.chatName || '（没名字）') + '</b>' +
+            '<i>可读 ' + Number(s.kept || 0) + ' 条（原始 ' + Number(s.messages || 0) + '） · ' + esc(span) +
+            ' · ' + kb + ' · ' + new Date(s.savedAt).toLocaleString('zh-CN', { hour12: false }) + '</i></div></div>'
+          );
+        })
+        .join('');
+      box.querySelectorAll('.qmi-row').forEach((el) => {
+        el.addEventListener('click', () => {
+          qmiState.stashPick = qmiState.stash[Number(el.dataset.i)] || null;
+          qmiRenderStash();
+        });
+      });
+      qmiPaintStashControls();
+    }
+
+    function qmiPaintStashControls() {
+      const pick = qmiState.stashPick;
+      $qmi('qmi-stash-import').disabled = !pick;
+      $qmi('qmi-stash-del').disabled = !pick;
+      if (!pick) return;
+      // 预填：优先用存过的配置；没配过就拿这份导出对面的号
+      $qmi('qmi-stash-bots').value =
+        qmiState.botsCache && qmiState.botsCache.length ? qmiState.botsCache.join(', ') : pick.peerUin || '';
+    }
+
+    // 步骤条：③④ 在缓冲区有货之前是灰的，② 完成后打绿勾
+    function qmiPaintStepper(has) {
+      const it = (n) => document.querySelector('.qmi-step-it[data-goto="' + n + '"]');
+      it(3).classList.toggle('dim', !has);
+      it(4).classList.toggle('dim', !has);
+      it(3).classList.toggle('ready', has);
+      it(4).classList.toggle('ready', has);
+      it(2).classList.toggle('done', has);
+    }
+
+    function qmiShowStashResult(kind, text) {
+      const el = $qmi('qmi-stash-result');
+      el.hidden = false;
+      el.classList.toggle('ok', kind === 'ok');
+      el.classList.toggle('bad', kind !== 'ok');
+      $qmi('qmi-stash-result-text').textContent = text;
+      $qmi('qmi-goto-browse').hidden = kind !== 'ok';
+    }
+
+    async function qmiStashImport() {
+      const pick = qmiState.stashPick;
+      if (!pick || qmiState.busy) return;
+      const mode = document.querySelector('input[name="qmi-stash-mode"]:checked')?.value || 'bulk';
+      // 「她是谁」在这一步才需要 —— 先写进配置，解析那边按它算「谁说的」
+      const bots = ($qmi('qmi-stash-bots').value || '')
+        .split(/[,，;；\s]+/)
+        .map((x) => x.trim())
+        .filter(Boolean);
+      qmiState.busy = true;
+      $qmi('qmi-stash-import').disabled = true;
+      $qmi('qmi-stash-del').disabled = true;
+      $qmi('qmi-stash-progress').hidden = false;
+      $qmi('qmi-stash-result').hidden = true;
+      const t0 = Date.now();
+      try {
+        await api('/api/qq-import/config', { method: 'POST', body: JSON.stringify({ bots }) });
+        qmiState.botsCache = bots;
+        if (mode === 'persona') {
+          qmiPhase('stash', '把文件交给她，她开始读…', 15, true);
+          await api('/api/qq-import/absorb-persona', {
+            method: 'POST',
+            body: JSON.stringify({ file: pick.file, taskId: pick.taskId || undefined }),
+          });
+          const r = await qmiWaitPersona(t0, 'stash');
+          qmiPhase('stash', '完成', 100, false);
+          if (r.phase === 'stopped') {
+            qmiShowStashResult('ok', '停了：读到第 ' + r.batch + '/' + r.batchTotal + ' 批，已记 ' + r.remembered + ' 件。');
+          } else {
+            qmiShowStashResult(
+              'ok',
+              '她读完了 ' + r.batchTotal + ' 批，记住了 ' + r.remembered + ' 件、跳过 ' + r.skipped +
+                ' 件重复的，花了 ' + r.tokens + ' tokens。'
+            );
+          }
+        } else {
+          qmiPhase('stash', '写进记忆库…', 55, true);
+          const res = await api('/api/qq-import/absorb', {
+            method: 'POST',
+            body: JSON.stringify({ mode: 'bulk', file: pick.file, taskId: pick.taskId || undefined }),
+          });
+          qmiPhase('stash', '完成', 100, false);
+          qmiShowStashResult(
+            'ok',
+            '写完了：新增 ' + res.added + ' 条，跳过 ' + res.skipped + ' 条（导过的）。现在库里 ' + res.memories + ' 条。'
+          );
+        }
+      } catch (e) {
+        qmiPhase('stash', '', 0, false);
+        qmiShowStashResult('bad', '没写进去：' + (e.message || e));
+      } finally {
+        qmiState.busy = false;
+        $qmi('qmi-stash-import').disabled = false;
+        $qmi('qmi-stash-del').disabled = false;
+        $qmi('qmi-stash-progress').hidden = true;
+      }
+    }
+
+    async function qmiStashDel() {
+      const pick = qmiState.stashPick;
+      if (!pick) return;
+      const go = await openModal(
+        '从缓冲区删掉',
+        '「' + (pick.chatName || '这份导出') + '」会从缓冲区清掉。\n已经写进库的不受影响。',
+        { ok: '删掉', cancel: '算了', danger: true }
+      );
+      if (!go) return;
+      try {
+        await api('/api/qq-import/stash?id=' + encodeURIComponent(pick.id), { method: 'DELETE' });
+        qmiState.stashPick = null;
+        qmiLoadStash();
+      } catch (e) {
+        $qmi('qmi-stash-state').textContent = '没删掉：' + (e.message || e);
+      }
+    }
+
+    async function qmiTaskStash() {
+      const t = qmiState.taskPick;
+      if (!t) return;
+      try {
+        await api('/api/qq-import/stash', {
+          method: 'POST',
+          body: JSON.stringify({
+            taskId: t.taskId,
+            downloadUrl: t.downloadUrl || undefined,
+            filePath: t.filePath || undefined,
+          }),
+        });
+        $qmi('qmi-task-state').textContent = '已放进缓冲区 —— 在导出向导的 ③④ 处理。';
+      } catch (e) {
+        $qmi('qmi-task-state').textContent = '没放进去：' + (e.message || e);
+      }
+    }
+
+    // ── 她的人格：配置的读 / 存 / 试一句 ──
+    async function qmiLoadPersona() {
+      try {
+        const d = await api('/api/persona-config');
+        $qmi('qmi-persona-url').value = d.baseUrl || '';
+        $qmi('qmi-persona-model').value = d.model || '';
+        $qmi('qmi-persona-prompt').value = d.persona || '';
+        $qmi('qmi-persona-key-mask').textContent = d.hasKey ? d.keyMasked : '没配';
+      } catch { /* 读不到就先空着 */ }
+    }
+    async function qmiSavePersona() {
+      const note = $qmi('qmi-persona-note');
+      try {
+        const d = await api('/api/persona-config', {
+          method: 'POST',
+          body: JSON.stringify({
+            baseUrl: $qmi('qmi-persona-url').value,
+            model: $qmi('qmi-persona-model').value,
+            apiKey: $qmi('qmi-persona-key').value,
+            persona: $qmi('qmi-persona-prompt').value,
+          }),
+        });
+        $qmi('qmi-persona-key').value = '';
+        $qmi('qmi-persona-key-mask').textContent = d.hasKey ? d.hasKey && '已配置' : '没配';
+        note.textContent = '存好了。';
+      } catch (e) {
+        note.textContent = '没存上：' + (e.message || e);
+      }
+    }
+    async function qmiTestPersona() {
+      const note = $qmi('qmi-persona-note');
+      note.textContent = '问她一句…';
+      try {
+        const d = await api('/api/persona-test', { method: 'POST', body: '{}' });
+        note.textContent = '她答：' + (d.items?.[0]?.remember || '(空)');
+      } catch (e) {
+        note.textContent = '没答上：' + (e.message || e);
+      }
+    }
+
+    // ── 导入历史 / 撤回 ──
+    async function qmiLoadHistory() {
+      const box = $qmi('qmi-histlist');
+      box.innerHTML = '<div class="qmi-empty">正在读…</div>';
+      try {
+        const d = await api('/api/qq-import/batches');
+        qmiState.history = d.batches || [];
+      } catch (e) {
+        qmiState.history = [];
+        box.innerHTML = '<div class="qmi-empty"></div>';
+        box.firstChild.textContent = '读不到：' + (e.message || e);
+      }
+      qmiRenderHistory();
+    }
+
+    function qmiRenderHistory() {
+      const box = $qmi('qmi-histlist');
+      if (!qmiState.history.length) {
+        box.innerHTML = '<div class="qmi-empty">没有导入过东西 —— 干干净净。</div>';
+        return;
+      }
+      box.innerHTML = qmiState.history
+        .map((b, i) => {
+          const when = b.at ? new Date(b.at).toLocaleString('zh-CN', { hour12: false }) : '';
+          const mode = b.mode === 'persona' ? '人格筛选' : String(b.mode || '全量计入');
+          const name = b.tagged ? esc(b.chat || '（没名字）') : '更早的导入';
+          return (
+            '<div class="qmi-row" style="cursor:default">' +
+            '<div class="qmi-hist-main"><b>' + name + '</b>' +
+            '<i>' + esc(mode) + ' · ' + Number(b.count) + ' 条 · ' + esc(when) +
+            (b.tagged ? '' : ' · 没有批次记录，撤后重导可能被去重跳过') + '</i></div>' +
+            '<button class="btn btn-sm danger qmi-hist-undo" data-i="' + i + '" type="button">撤回</button></div>'
+          );
+        })
+        .join('');
+      box.querySelectorAll('.qmi-hist-undo').forEach((btn) => {
+        btn.addEventListener('click', () => qmiUndo(qmiState.history[Number(btn.dataset.i)]));
+      });
+    }
+
+    async function qmiUndo(b) {
+      if (!b) return;
+      const go = await openModal(
+        '撤回这批导入',
+        '把这一批（' + b.count + ' 条记忆）从库里删掉，总库里的原文一起清。\n\n' +
+          (b.tagged
+            ? '撤了之后重导同一份文件，会当成新的再进来。'
+            : '这批是早期导入的，没有批次记录 —— 撤后重导同一文件可能被去重跳过。'),
+        { ok: '撤回', cancel: '算了', danger: true }
+      );
+      if (!go) return;
+      const el = $qmi('qmi-hist-result');
+      try {
+        const r = await api('/api/qq-import/import-undo', {
+          method: 'POST',
+          body: JSON.stringify({ id: b.id }),
+        });
+        el.hidden = false;
+        el.classList.add('ok');
+        el.classList.remove('bad');
+        $qmi('qmi-hist-result-text').textContent =
+          '撤了：删掉 ' + r.removed + ' 条记忆、' + r.points + ' 个点（总库原文一起清了）。';
+      } catch (e) {
+        el.hidden = false;
+        el.classList.add('bad');
+        el.classList.remove('ok');
+        $qmi('qmi-hist-result-text').textContent = '没撤成：' + (e.message || e);
+      }
+      qmiLoadHistory();
+    }
+
+    // ── 事件 ──
+    document.querySelectorAll('.qmi-tab').forEach((tab) => {
+      tab.addEventListener('click', () => {
+        for (const t of document.querySelectorAll('.qmi-tab')) t.classList.toggle('on', t === tab);
+        $qmi('qmi-tab-pick').hidden = tab.dataset.tab !== 'pick';
+        $qmi('qmi-tab-tasks').hidden = tab.dataset.tab !== 'tasks';
+        $qmi('qmi-tab-hist').hidden = tab.dataset.tab !== 'hist';
+        if (tab.dataset.tab === 'tasks') qmiListTasks();
+        if (tab.dataset.tab === 'hist') qmiLoadHistory();
+      });
+    });
+
+    $qmi('qmi-hist-refresh').addEventListener('click', qmiLoadHistory);
+
+    $qmi('qmi-recheck').addEventListener('click', qmiRefreshEnv);
+    $qmi('qmi-search').addEventListener('input', qmiRenderFriends);
+    $qmi('qmi-reload-friends').addEventListener('click', qmiLoadFriends);
+    $qmi('qmi-range').addEventListener('change', () => {
+      const custom = $qmi('qmi-range').value === '-1';
+      $qmi('qmi-start').hidden = !custom;
+      $qmi('qmi-end').hidden = !custom;
+      $qmi('qmi-sep').hidden = !custom;
+    });
+    $qmi('qmi-run').addEventListener('click', qmiRun);
+
+    // 步骤条：点哪步滚到哪步
+    document.querySelectorAll('.qmi-step-it').forEach((s) => {
+      s.addEventListener('click', () => {
+        const n = s.dataset.goto;
+        const el =
+          n === '1' ? document.getElementById('qmi-sec-1')
+        : n === '2' ? document.getElementById('qmi-sec-2')
+        : n === '3' ? (document.getElementById('qmi-mode-block').hidden
+            ? document.getElementById('qmi-stash-empty-hint')
+            : document.getElementById('qmi-mode-block'))
+        : document.getElementById('qmi-stash-block');
+        el?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    });
+
+    $qmi('qmi-stop').addEventListener('click', () => {
+      qmiState.stopFlag = true;
+      $qmi('qmi-run-state').textContent = '正在停…';
+      // 后台任务得单独喊停（这批读完就收手）
+      api('/api/qq-import/persona-stop', { method: 'POST', body: '{}' }).catch(() => {});
+    });
+    $qmi('qmi-stash-refresh').addEventListener('click', qmiLoadStash);
+    $qmi('qmi-stash-import').addEventListener('click', qmiStashImport);
+    $qmi('qmi-stash-del').addEventListener('click', qmiStashDel);
+    $qmi('qmi-task-stash').addEventListener('click', qmiTaskStash);
+    $qmi('qmi-goto-browse').addEventListener('click', () =>
+      document.querySelector('.nav-item[data-page="browse"]')?.click()
+    );
+    $qmi('qmi-goto-browse2').addEventListener('click', () =>
+      document.querySelector('.nav-item[data-page="browse"]')?.click()
+    );
+    $qmi('qmi-relist').addEventListener('click', qmiListTasks);
+    $qmi('qmi-openui').addEventListener('click', () =>
+      window.open('http://127.0.0.1:40653/qce', '_blank', 'noopener')
+    );
+    $qmi('qmi-absorb').addEventListener('click', qmiAbsorb);
+    $qmi('qmi-persona-save').addEventListener('click', qmiSavePersona);
+    $qmi('qmi-persona-test').addEventListener('click', qmiTestPersona);
+
+    // 切到这一页、每隔一阵，都把环境刷一遍 —— QCE 那边自己变好了也能第一时间看见
+    document.querySelector('.nav-item[data-page="import"]')?.addEventListener('click', qmiRefreshEnv);
+    qmiRefreshEnv();
+    qmiLoadBots();
+    qmiLoadPersona();
+    qmiLoadStash();
+    setInterval(qmiRefreshEnv, 20000);
+  }
+
+    /** 换存放位置：选文件夹 → 展开确认 → 整目录搬过去 */
   let moveTarget = '';
 
   const movePanel = document.getElementById('move-panel');
@@ -3932,7 +5335,7 @@
       };
 
       loadDbs();
-      loadTokenUsage();
+        loadTokenUsage();
 
       document.getElementById('token-refresh')?.addEventListener('click', () => {
         const cur = document.querySelector('#token-range .tag.active');
@@ -4165,16 +5568,16 @@
             openBtn(consoleUrl, '打开控制台')
           ));
 
-          // 第三块空着
-          cards.push('<div class="qe-blank">·</div>');
-
           // 出错时在最前面补一条，别让问题藏着
           let warn = '';
           if (!ob.reachable) warn = '<div class="banner warn wide" style="margin-bottom:12px">网关连不上：' + esc(ob.error || '没响应') + '</div>';
           else if (!ob.authorized) warn = '<div class="banner warn wide" style="margin-bottom:12px">OneBot 端口通，但令牌不对（401）</div>';
           else if (!qq) warn = '<div class="banner warn wide" style="margin-bottom:12px">OneBot 有响应，但 QQ 没登录</div>';
 
-          gd.innerHTML = warn + cards.join('');
+          gd.innerHTML = warn
+            ? warn.replace('class="banner warn wide"', 'class="banner warn wide" style="grid-column:1/-1;margin-bottom:0"') +
+              cards.join('')
+            : cards.join('');
 
           // 点「打开」→ 新窗口
           gd.querySelectorAll('[data-open]').forEach((b) => {

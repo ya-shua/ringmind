@@ -169,8 +169,8 @@ export class Store {
     this.db
       .prepare(
         `INSERT INTO memories
-           (id, created_at, ring_entered_at, born_load, ring, source, speaker, content, emotion, hits, pinned, note, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+           (id, created_at, ring_entered_at, born_load, ring, source, speaker, content, emotion, hits, pinned, note, import_batch, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         m.id,
@@ -185,6 +185,7 @@ export class Store {
         m.hits ?? 0,
         m.pinned ? 1 : 0,
         m.note ?? null,
+        m.importBatch ?? null,
         m.updatedAt ?? Date.now()
       );
     return this.getMemory(m.id);

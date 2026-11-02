@@ -392,7 +392,7 @@
     </svg>
   </div>
 
-  <h1>环形的心<span class="ver">v1.0.1</span></h1>
+  <h1>环形的心<span class="ver" id="ver">v—</span></h1>
   <p class="sub">一个会遗忘的记忆库 · 令牌登录</p>
 
   <form id="form" autocomplete="off">
@@ -413,6 +413,16 @@
   </form>
 </div>
 
+<script>
+  // 版本号从后端读，别再手写 —— 以前写死 v1.0.1，代码都到 1.4 了页面还挂着老号。
+  fetch('/api/version')
+    .then((r) => r.json())
+    .then((d) => {
+      const el = document.getElementById('ver');
+      if (el && d && d.ok && d.version) el.textContent = 'v' + d.version;
+    })
+    .catch(() => {});
+</script>
 <script>
   // ── 环上文字：对大肥鱼的热评，正常横排，锚在四道圈的圆周上，上下浮动 ──
   // 内容默认读同目录的 hot-comments.json（换成真实热评，只改那一个文件）。

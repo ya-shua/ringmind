@@ -280,6 +280,12 @@ export const DEFAULT_CONFIG = {
    */
   metaMemory: false,
 
+  /**
+   * 允不允许把总库查回来（她的回忆能不能翻到原始存档）。
+   * 永不忘模式下默认开，其他模式默认关，用户可以在面板里改。
+   */
+  vaultAccessible: false,
+
   /** 各圈的停留天数与容量；null 表示不限制 */
   rings: Object.fromEntries(
     RING_ORDER.map((id) => [
@@ -437,4 +443,11 @@ export function nextRingOf(ringId) {
   const i = RING_ORDER.indexOf(ringId);
   if (i < 0 || i >= RING_ORDER.length - 1) return null;
   return RING_ORDER[i + 1];
+}
+
+/** 某个模式下，「可查询总库」默认该不该开 */
+export function vaultAccessibleDefaultOf(mode) {
+  if (mode === "never-forget") return true;
+  if (mode === "custom") return false;
+  return false;
 }

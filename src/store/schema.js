@@ -9,7 +9,7 @@
  */
 
 /** 结构版本，将来迁移用 */
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 export const SCHEMA_SQL = `
 PRAGMA journal_mode = WAL;
@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS memories (
   hits       INTEGER DEFAULT 0,            -- 被想起的次数
   pinned     INTEGER DEFAULT 0,            -- 是否被她钉住
   note       TEXT,                         -- 批注（更正、存疑）
+  import_batch TEXT,                       -- 导入批次（面板导入的才标，撤回用）
   updated_at INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_mem_ring   ON memories(ring);
@@ -114,6 +115,8 @@ CREATE INDEX IF NOT EXISTS idx_ops_ts ON ops(ts);
  *          老的库一律用 created_at 回填 —— 它们本来就没记过进圈时间。
  * v2 → v3：加 token_usage 表。SCHEMA_SQL 里是 CREATE TABLE IF NOT EXISTS，
  *          老库打开时会自动补上，这里不用 ALTER。
+ * v3 → v4：memories 加 import_batch（导入批次标记，撤回导入用）。
+ *          只有面板导入的记忆才有值，日常记住的都是 NULL。
  */
 export function migrate(db, fromVersion) {
   const v = Number(fromVersion ?? 0);
@@ -124,6 +127,13 @@ export function migrate(db, fromVersion) {
       db.exec("ALTER TABLE memories ADD COLUMN ring_entered_at INTEGER NOT NULL DEFAULT 0");
     }
     db.exec("UPDATE memories SET ring_entered_at = created_at WHERE ring_entered_at = 0");
+  }
+
+  if (v < 4) {
+    const cols = db.prepare("PRAGMA table_info(memories)").all().map((c) => c.name);
+    if (!cols.includes("import_batch")) {
+      db.exec("ALTER TABLE memories ADD COLUMN import_batch TEXT");
+    }
   }
 
   return SCHEMA_VERSION;

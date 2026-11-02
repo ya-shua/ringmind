@@ -378,7 +378,7 @@ const hintEl = document.getElementById("hint");
 const FOCAL = 720;
 const cam = { yaw: 0.55, pitch: 0.4, dist: 940 };   // 默认比一版拉近了一圈，海铺满屏幕
 const DIST_MIN = 380, DIST_MAX = 2800;
-const IDLE_SPIN_AFTER = 3000;
+const IDLE_SPIN_AFTER = 2000;
 const VAULT_MAX = 80;                                // 总库幻影同屏最多几条：全画出来会糊成一片，反而看不见圈里的星                        // 停手 3 秒，海自己接着转
 
 let scene = null;
@@ -610,7 +610,7 @@ function frame(t) {
     cam.pitch = camTween.fp + (camTween.pitch - camTween.fp) * e;
     if (k >= 1) camTween = null;
   } else {
-    // 惯性 + 自动旋转：没人动，3 秒后海自己接着转（看详情也不例外）
+    // 惯性 + 自动旋转：没人动，2 秒后海自己接着转（看详情也不例外）
     cam.yaw += vel.yaw * dt;
     cam.pitch += vel.pitch * dt;
     vel.yaw *= 0.9; vel.pitch *= 0.9;

@@ -13,7 +13,7 @@
 
 import http from "node:http";
 import { copyFile, mkdir, readFile, readdir, stat, unlink, writeFile } from "node:fs/promises";
-import { createReadStream, existsSync, readFileSync, writeFileSync, readdirSync, mkdirSync, rmSync } from "node:fs";
+import { copyFileSync, createReadStream, existsSync, readFileSync, writeFileSync, readdirSync, mkdirSync, rmSync, statSync, unlinkSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { basename, dirname, extname, join, resolve, sep } from "node:path";
 import { tmpdir } from "node:os";
@@ -23,7 +23,10 @@ import { Ringmind } from "../index.js";
 import { ensureToken, verifyToken, makeSessionCookie, readToken, rotateToken } from "./auth.js";
 import { checkForUpdate, applyUpdate, restartPanel, localVersion } from "./update.js";
 import { healGateway, saveGatewayConfig } from "./gateway.js";
-import { CUSTOM_PREFIX, PRESETS, MODES, RINGS, RING_ORDER, metaMemoryDefaultOf } from "../core/rings.js";
+import { openAstrbot, findAstrbotDb } from "./usage-sources.js";
+import { probeQce, readQceToken, lookupPeer, listFriends, listGroups, listRecentContacts, startRoamingExport, startLocalExport, getTask, cancelTask, listTasks, downloadResult, parseExport, startInstall, installState, findLauncher, qqRunning, launchQce } from "./qq-import.js";
+import { readPersonaConfig, writePersonaConfig, askBatch, chunk, BATCH_SIZE } from "./persona.js";
+import { CUSTOM_PREFIX, PRESETS, MODES, RINGS, RING_ORDER, metaMemoryDefaultOf, vaultAccessibleDefaultOf } from "../core/rings.js";
 import { buildSeaScene } from "./sea.js";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
@@ -155,6 +158,18 @@ function qqLedgerCandidates() {
 }
 
 /** 找到真正该用的账本：先看 data-location.json 指定的，再看 qq-bridge */
+/** 读 data-location.json 里的 usage 配置（可选；不写就全靠自动探测） */
+function usageCfg() {
+  try {
+    const locFile = join(HERE, "..", "..", "data-location.json");
+    if (!existsSync(locFile)) return null;
+    const loc = JSON.parse(readFileSync(locFile, "utf8"));
+    return loc && typeof loc.usage === "object" ? loc.usage : null;
+  } catch {
+    return null;
+  }
+}
+
 function findUsageLedger() {
   try {
     const locFile = join(HERE, "..", "..", "data-location.json");
@@ -166,15 +181,23 @@ function findUsageLedger() {
   } catch {
     /* 读不到就往下探 */
   }
+  // 装了 AstrBot 的机器：它的 provider_stats 里就有用量，比 jsonl 直接
+  const ab = findAstrbotDb(usageCfg()?.astrbotDb);
+  if (ab) return { path: ab, kind: "astrbot" };
+
   const qq = qqLedgerCandidates();
   if (qq.length) return { path: qq[0], kind: "qq-bridge" };
 
   // 老位置：项目里的 data/token-usage.jsonl
   if (existsSync(DEFAULT_TOKEN_LEDGER)) return { path: DEFAULT_TOKEN_LEDGER, kind: "项目data" };
 
-  // 最后才考虑 DSH 的总账 —— 但会明确标注「这不是 QQ 的」
-  const d = dshLedgerPath();
-  if (d) return { path: d, kind: "dsh-harness" };
+  // DSH 总账（~/.dsh/dsh-usage/usage-ledger.json）是「coding agent 跟人聊天」花的，
+  // 跟大肥鱼在 QQ 里的消耗完全是两笔账。默认不碰它 —— 以前拿它兜底，结果把
+  // 几十亿 token 算成了 QQ 的。真要看得显式开：data-location.json 里 usage.dsh = true。
+  if (usageCfg()?.dsh === true) {
+    const d = dshLedgerPath();
+    if (d) return { path: d, kind: "dsh-harness" };
+  }
 
   return { path: null, kind: null };
 }
@@ -247,11 +270,37 @@ function readDshLedger(filePath, hours = 0) {
  *
  * 注意 cost：0 要原样存 —— 那是「这家的免费额度」，不是「没算」。
  */
-function syncDshToDb(store) {
+async function syncDshToDb(store) {
   try {
     if (!store || typeof store.upsertTokenUsage !== "function") return { ok: false, reason: "库不支持" };
     const found = findUsageLedger();
-    if (!found.path) return { ok: false, reason: "没有 QQ 账本" };
+    if (!found.path) return { ok: false, reason: "没有找到用量来源" };
+
+    // AstrBot 路线：直接读它的 provider_stats。字段是它自己的，交给 usage-sources 去认
+    if (found.kind === "astrbot") {
+      const ab = await openAstrbot(found.path);
+      if (!ab.ok) return { ok: false, reason: "AstrBot 库读不了：" + ab.reason };
+      const bucket = new Map();
+      for (const r of ab.rows) {
+        const id = r.day + "\u0000" + r.provider + "\u0000" + r.model;
+        const g = bucket.get(id) || {
+          day: r.day, provider: r.provider, model: r.model,
+          hit: 0, miss: 0, write: 0, output: 0, calls: 0, cost: 0,
+        };
+        g.hit += r.cacheHit;
+        g.miss += r.cacheMiss;
+        g.output += r.output;
+        g.calls += 1;
+        g.cost += costOf(
+          r.model,
+          { cacheHit: r.cacheHit, cacheMiss: r.cacheMiss, cacheWrite: 0, output: r.output },
+          r.ms
+        );
+        bucket.set(id, g);
+      }
+      const n2 = store.upsertTokenUsage([...bucket.values()]);
+      return { ok: true, synced: n2, from: found.path, kind: "astrbot", table: ab.table };
+    }
 
     // DSH 那种三层嵌套的另算
     let recs;
@@ -352,6 +401,18 @@ function readTokenLedger(ledgerPath, hours = 0) {
       error: "找不到 QQ 的用量账本 —— 没找到 qq-bridge/state/token-usage.jsonl。\n在 data-location.json 里加 \"tokenUsageFile\" 指过去也行。",
       records: 0,
       triedDsh: dshLedgerPath(),
+    };
+  }
+
+  // 外部数据库（AstrBot 等）：正常流程是先同步进库、再从库读，走不到这儿。
+  // 真走到这儿说明库还空着，别拿二进制当文本读，直接说没接入。
+  if (/\.(db|sqlite|sqlite3)$/i.test(ledgerPath)) {
+    return {
+      ok: false,
+      error: "用量来自外部数据库，但还没同步进记忆库 —— 刷新一下再试；一直这样就是读不出来。",
+      records: 0,
+      ledger: ledgerPath,
+      ledgerKind: ledgerKind,
     };
   }
 
@@ -804,7 +865,9 @@ function sessionOf(req) {
 function safeJoin(base, urlPath) {
   const clean = decodeURIComponent(urlPath.split("?")[0]).replace(/^\/+/, "");
   const full = resolve(base, clean);
-  return full.startsWith(resolve(base)) ? full : null;
+  // 必须带分隔符比前缀，不然 src\web 会放过兄弟目录 src\web-anything
+  const root = resolve(base);
+  return full === root || full.startsWith(root + sep) ? full : null;
 }
 
 async function serveFile(res, filePath) {
@@ -1435,6 +1498,19 @@ export async function createServer({ dataDir, dbPath, port = 5173, host = "127.0
     );
   }
 
+  // 后台人格导入任务。放在请求处理函数外面 —— 要不每个请求都会把它重置成 null，
+  // 发起任务的那个请求看得见，轮询进度的请求永远是"空闲"。
+  // 任务对象本身就是状态，拷贝出去就是进度。
+  let personaJob = null;
+  const personaStatus = () =>
+    personaJob
+      ? { ...personaJob, stop: undefined, running: !personaJob.done }
+      : {
+          running: false, done: true, phase: "idle",
+          batch: 0, batchTotal: 0, remembered: 0, skipped: 0,
+          tokens: 0, error: null, chatName: "", startedAt: 0, finishedAt: 0,
+        };
+
   const server = http.createServer(async (req, res) => {
    try {
     const url = req.url || "/";
@@ -1502,6 +1578,12 @@ export async function createServer({ dataDir, dbPath, port = 5173, host = "127.0
       }
     }
 
+    // 版本号：这一条**故意放在登录之前** —— 登录页自己也要显示版本，
+    // 而那时候手里还没有会话。它只吐一个纯数字，没什么可保护的。
+    if (method === "GET" && url === "/api/version") {
+      return json(res, 200, { ok: true, version: localVersion() });
+    }
+
     // ── 以下都要登录 ───────────────────────────────────
     if (url.startsWith("/api/")) {
       if (!sessionOf(req)) return json(res, 401, { ok: false, error: "没登录" });
@@ -1563,6 +1645,8 @@ export async function createServer({ dataDir, dbPath, port = 5173, host = "127.0
             metaMemory: cfg.metaMemory,
             // 这个模式下元记忆「默认」该不该开，前端拿它来提示
             metaMemoryDefault: metaMemoryDefaultOf(cfg.mode),
+            vaultAccessible: Boolean(cfg.vaultAccessible),
+            vaultAccessibleDefault: vaultAccessibleDefaultOf(cfg.mode),
             promote: cfg.promote,
             compaction: cfg.compaction,
           },
@@ -1803,10 +1887,775 @@ export async function createServer({ dataDir, dbPath, port = 5173, host = "127.0
         }
       }
 
+      // ── QQ 聊天记录导入 ────────────────────────────────
+      // 我们不碰 QQ 的加密库。QCE 注入进 QQ，让 QQ 自己把消息交出来，
+      // 这里只负责问它要、拿回来、送进记忆库。
+      // 全部只读探测：QCE 没装、没跑、令牌不对，都返回状态而不是报错。
+      if (method === "GET" && url === "/api/qq-import/probe") {
+        try {
+          const r = await probeQce();
+          return json(res, 200, { ok: true, data: r });
+        } catch (e) {
+          return json(res, 200, {
+            ok: true,
+            data: { state: "error", error: e?.message || String(e) },
+          });
+        }
+      }
+
+      // 列会话（给导入向导 ① 用）：最近会话在前（真正聊过的，含非好友单聊和群聊），
+      // 再补上没聊过的好友 —— 合并去重。本地导出两种都支持。
+      if (method === "GET" && (url === "/api/qq-import/contacts" || url === "/api/qq-import/friends" || url === "/api/qq-import/groups")) {
+        try {
+          const token = readQceToken();
+          if (!token) {
+            return json(res, 200, { ok: false, error: "QCE 还没就绪", state: "no-token" });
+          }
+          if (url === "/api/qq-import/contacts") {
+            const [rec, fr] = await Promise.all([
+              listRecentContacts(token).catch(() => ({ ok: false, list: [] })),
+              listFriends(token).catch(() => ({ ok: false, list: [] })),
+            ]);
+            const seen = new Map();
+            const out = [];
+            for (const c of rec.list || []) {
+              const key = c.chatType + ":" + c.uid;
+              if (!c.uid || seen.has(key)) continue;
+              seen.set(key, true);
+              out.push({ ...c, recent: true });
+            }
+            for (const f of fr.list || []) {
+              const key = "1:" + f.uid;
+              if (!f.uid || seen.has(key)) continue;
+              seen.set(key, true);
+              out.push({ uid: f.uid, uin: f.uin, name: f.name, remark: f.remark, chatType: 1, kind: "friend", recent: false });
+            }
+            return json(res, 200, { ok: true, data: { total: out.length, list: out } });
+          }
+          const r = url.endsWith("friends") ? await listFriends(token) : await listGroups(token);
+          return json(res, 200, r.ok ? { ok: true, data: { total: r.total, list: r.list } } : { ok: false, error: r.error });
+        } catch (e) {
+          return json(res, 200, { ok: false, error: e?.message || String(e) });
+        }
+      }
+
+      // QCE 装到项目下的 vendor/qce（vendor/ 已在 .gitignore 里）
+      const QCE_DIR = resolve(HERE, "../../vendor/qce");
+
+      // 「哪些号算她」—— 换过号就填多个，老号说的话仍然算她的。
+      // 存 meta 而不是写文件：它跟这个记忆库绑定，换库就该换一套。
+      const readQqBots = () => {
+        try {
+          const raw = db?.store?.getMeta("qq_bots");
+          if (!raw) return [];
+          const j = JSON.parse(raw);
+          return Array.isArray(j) ? j.map(String).filter(Boolean) : [];
+        } catch {
+          return [];
+        }
+      };
+      const writeQqBots = (list) => {
+        const clean = [...new Set((Array.isArray(list) ? list : []).map((x) => String(x).trim()).filter(Boolean))];
+        try {
+          db.store.setMeta("qq_bots", JSON.stringify(clean));
+        } catch {}
+        return clean;
+      };
+
+      if (method === "GET" && url === "/api/qq-import/config") {
+        return json(res, 200, { ok: true, data: { bots: readQqBots() } });
+      }
+
+      if (method === "POST" && url === "/api/qq-import/config") {
+        try {
+          const body = await readBody(req, 1024 * 1024);
+          const bots = writeQqBots(body?.bots);
+          return json(res, 200, { ok: true, data: { bots } });
+        } catch (e) {
+          return json(res, 400, { ok: false, error: e?.message || String(e) });
+        }
+      }
+
+      // 建一个导出任务。start / end 都按 Unix 秒传（界面给的是日期）。
+      // mode: 缺省走漫游（QQ 服务器），'local' 走本机 QQ 数据库 ——
+      // 会话没开漫游、或漫游记录不在服务器上时（漫游报业务码 -2），本机这条路照样有货。
+      if (method === "POST" && url === "/api/qq-import/export") {
+        try {
+          const token = readQceToken();
+          if (!token) return json(res, 200, { ok: false, error: "QCE 还没就绪" });
+
+          const body = await readBody(req, 4 * 1024 * 1024);
+          const peerUid = String(body.peerUid || "");
+          const start = Number(body.start || 0);
+          const end = Number(body.end || 0);
+          if (!peerUid) return json(res, 400, { ok: false, error: "没选会话" });
+          if (!start || !end || end <= start) return json(res, 400, { ok: false, error: "时间范围不对" });
+
+          const common = {
+            token,
+            peerUid,
+            chatType: Math.max(1, Math.min(2, Number(body.chatType || 1))),
+            sessionName: String(body.name || ""),
+            start,
+            end,
+          };
+          // 群聊没有漫游一说，直接走本机导出
+          const r =
+            body.mode === "local" || common.chatType === 2
+              ? await startLocalExport(common)
+              : await startRoamingExport({
+                  ...common,
+                  maxMessages: Math.min(200000, Math.max(1000, Number(body.maxMessages || 100000))),
+                });
+          return json(res, 200, r.ok ? { ok: true, data: r.data } : { ok: false, error: r.error });
+        } catch (e) {
+          return json(res, 400, { ok: false, error: e?.message || String(e) });
+        }
+      }
+
+      // 列出 QCE 里已经导好的任务 —— 用户在它自己界面导完，面板靠这个找回来
+      if (method === "GET" && url === "/api/qq-import/tasks") {
+        try {
+          const token = await readQceToken();
+          if (!token) return json(res, 200, { ok: false, error: "没读到 QCE 的令牌" });
+          const { tasks } = await listTasks(token, 60);
+          return json(res, 200, { ok: true, data: { tasks } });
+        } catch (e) {
+          return json(res, 200, { ok: false, error: e.message || "读不到任务列表" });
+        }
+      }
+
+      // 查任务进度（注意：必须是 /task?，不能匹配到 /tasks）
+      if (method === "GET" && url.startsWith("/api/qq-import/task?")) {
+        try {
+          const token = readQceToken();
+          if (!token) return json(res, 200, { ok: false, error: "QCE 还没就绪" });
+          const id = new URL(url, "http://x").searchParams.get("id") || "";
+          if (!id) return json(res, 400, { ok: false, error: "缺少任务 id" });
+          const r = await getTask(id, token);
+          return json(res, 200, r.ok ? { ok: true, data: r.data } : { ok: false, error: r.error });
+        } catch (e) {
+          return json(res, 200, { ok: false, error: e?.message || String(e) });
+        }
+      }
+
+      // 解析一个已经导出的 JSON 文件（只看结构，先不写库）
+      if (method === "POST" && url === "/api/qq-import/parse") {
+        try {
+          const body = await readBody(req, 64 * 1024 * 1024);
+          // QCE 给的是 Windows "扩展长度路径"（\\?\D:\...），Node 的 fs 不认这个前缀
+          const path = String(body.file || "").replace(/^\\\\\?\\/, "");
+          if (!path || !existsSync(path)) return json(res, 404, { ok: false, error: "文件不在了：" + path });
+          const st = statSync(path, { throwIfNoEntry: false });
+          if (!st || !st.isFile()) return json(res, 400, { ok: false, error: "这不是一个能读的文件：" + path });
+          // 整个文件要 readFileSync 进内存再 JSON.parse —— 太大的直接拒掉，别把面板带走
+          if (st.size > 256 * 1024 * 1024) {
+            return json(res, 400, { ok: false, error: "文件太大（" + Math.round(st.size / 1048576) + " MB），上限 256 MB" });
+          }
+          const raw = JSON.parse(readFileSync(path, "utf8"));
+          const parsed = parseExport(raw, body.bots ?? readQqBots());
+          return json(res, 200, {
+            ok: true,
+            data: {
+              chatName: parsed.chatName,
+              selfUin: parsed.selfUin,
+              peerUin: parsed.peerUin,
+              bots: parsed.bots,
+              total: parsed.total,
+              kept: parsed.kept,
+              preview: parsed.messages.slice(0, 5).map((m) => ({ who: m.who, text: m.text, ts: m.ts })),
+            },
+          });
+        } catch (e) {
+          return json(res, 400, { ok: false, error: e?.message || String(e) });
+        }
+      }
+
+      // 把导出结果真正写进记忆库。
+      //
+      // 两种模式：
+      //   bulk     不读不判断，每条都按现有规则塞进 ring4
+      //   persona  让她读完整段再决定 —— 需要先接上她的人格，现在还没做
+      //
+      // 进度写进记忆库目录下的 qq-import-queue.json，断了能接着来。
+      if (method === "POST" && url === "/api/qq-import/absorb") {
+        try {
+          const body = await readBody(req, 8 * 1024 * 1024);
+          const mode = String(body.mode || "bulk");
+
+          // 三种来路：面板选到的本地路径 / QCE 给的一条下载链接 / 两者都没有
+          let path = String(body.file || body.filePath || "").replace(/^\\\\\?\\/, "");
+          let tmpFile = null;
+
+          if (!path && body.downloadUrl) {
+            const token = readQceToken();
+            if (!token) return json(res, 200, { ok: false, error: "读不到 QCE 的令牌（它启动了没有？）" });
+            const d = await downloadResult(String(body.downloadUrl), token);
+            if (!d.ok || !d.buf) {
+              return json(res, 200, { ok: false, error: "下载 QCE 的文件失败：" + (d.error || "未知原因") });
+            }
+            const safe = String(body.taskId || "qce").replace(/[^\w.-]/g, "").slice(0, 40) || "qce";
+            tmpFile = join(tmpdir(), `ringmind-qce-${Date.now()}-${safe}.json`);
+            await writeFile(tmpFile, d.buf);
+            path = tmpFile;
+          }
+
+          if (!path || !existsSync(path)) return json(res, 404, { ok: false, error: "文件不在了：" + path });
+          const st0 = statSync(path, { throwIfNoEntry: false });
+          if (!st0 || !st0.isFile()) return json(res, 400, { ok: false, error: "这不是一个能读的文件：" + path });
+          if (st0.size > 256 * 1024 * 1024) {
+            return json(res, 400, { ok: false, error: "文件太大（" + Math.round(st0.size / 1048576) + " MB），上限 256 MB" });
+          }
+
+          if (mode === "persona") {
+            return json(res, 200, {
+              ok: false,
+              error: "人格筛选走单独的任务接口：/api/qq-import/absorb-persona",
+            });
+          }
+
+          const raw = JSON.parse(readFileSync(path, "utf8"));
+          const parsed = parseExport(raw, readQqBots());
+          if (!parsed.messages.length) {
+            return json(res, 200, { ok: true, data: { added: 0, skipped: 0, note: "这条会话没有可入库的文本" } });
+          }
+
+          // 去重：同一个 message id 只进一次。存在记忆库旁边，跟库走。
+          const qPath = join(data, "qq-import-queue.json");
+          let q = { imported: {}, batches: {}, lastRun: null };
+          try {
+            if (existsSync(qPath)) q = { ...q, ...JSON.parse(readFileSync(qPath, "utf8")) };
+          } catch {}
+          if (!q.imported || typeof q.imported !== "object") q.imported = {};
+          if (!q.batches || typeof q.batches !== "object") q.batches = {};
+
+          let added = 0;
+          let skipped = 0;
+          // 从现在开始淡：历史消息带真实发生时间，但不因为"太老"一进来就掉圈
+          const now = Date.now();
+          // 批次标记：这一run写进去的每一条都带着它，撤回时整批删
+          const batchId = "b" + now.toString(36) + Math.random().toString(36).slice(2, 6);
+          const batchKeys = [];
+
+          for (const m of parsed.messages) {
+            const key = m.id || parsed.peerUin + "|" + m.ts + "|" + m.text.slice(0, 40);
+            if (q.imported[key]) {
+              skipped++;
+              continue;
+            }
+            try {
+              db.remember({
+                content: m.text,
+                ring: "ring4",
+                // memories.source 只认 private / group
+                source: parsed.chatType === "group" ? "group" : "private",
+                // speaker 只分两种：她说的 / 不是她说的
+                speaker: m.who === "self" ? "self" : "user",
+                at: m.ts || now,
+                ringEnteredAt: now,
+                importBatch: batchId,
+                // 原文逐条进总库由 remember 自己写，这里不重复
+                skipVault: false,
+              });
+              q.imported[key] = m.ts || now;
+              batchKeys.push(key);
+              added++;
+            } catch {
+              skipped++;
+            }
+          }
+
+          if (added > 0) {
+            q.batches[batchId] = { at: now, chat: parsed.chatName, mode: "bulk", added, skipped, keys: batchKeys };
+          }
+          q.lastRun = { at: now, mode, chat: parsed.chatName, added, skipped, file: path };
+          try {
+            await writeFile(qPath, JSON.stringify(q, null, 2), "utf8");
+          } catch {}
+
+          const st = db.todayStats();
+          // 临时下载的文件用完就删，别在 %TEMP% 里堆
+          if (tmpFile) {
+            try {
+              unlink(tmpFile);
+            } catch {
+              /* 删不掉算了 */
+            }
+          }
+          return json(res, 200, {
+            ok: true,
+            data: {
+              added,
+              skipped,
+              queue: qPath,
+              chatName: parsed.chatName,
+              memories: Number(st.memories || 0),
+              points: Number(st.points || 0),
+            },
+          });
+        } catch (e) {
+          return json(res, 400, { ok: false, error: e?.message || String(e) });
+        }
+      }
+
+      // ── 人格筛选：让她自己读对话、挑值得记的事 ─────────
+      // persona.js 只负责"问她"和"解析回答"，这里把
+      // 导出文件 → 分批 → 问她 → 写库 串成一个后台任务。
+      // 一批最多 60 条、一次调用最长两分钟，所以绝不挂在 HTTP 请求上：
+      // 发起后立刻返回，进度走 /api/qq-import/persona-status 轮询。
+
+      if (method === "GET" && url === "/api/persona-config") {
+        const cfg = readPersonaConfig(data);
+        return json(res, 200, {
+          ok: true,
+          data: {
+            baseUrl: cfg.baseUrl,
+            model: cfg.model,
+            persona: cfg.persona,
+            enabled: cfg.enabled,
+            hasKey: Boolean(cfg.apiKey),
+            // 钥匙不给原文，给个能认出来的影子就够了
+            keyMasked: cfg.apiKey ? cfg.apiKey.slice(0, 4) + "…" + cfg.apiKey.slice(-4) : "",
+          },
+        });
+      }
+
+      if (method === "POST" && url === "/api/persona-config") {
+        try {
+          const body = await readBody(req, 1024 * 1024);
+          const patch = {};
+          if (typeof body.baseUrl === "string") patch.baseUrl = body.baseUrl.trim();
+          if (typeof body.model === "string") patch.model = body.model.trim();
+          if (typeof body.persona === "string") patch.persona = body.persona;
+          if (typeof body.enabled === "boolean") patch.enabled = body.enabled;
+          // 钥匙留空 = 保持原样；填了才换 —— 界面上每次回显都拿不到原文
+          if (typeof body.apiKey === "string" && body.apiKey.trim()) patch.apiKey = body.apiKey.trim();
+          const cfg = writePersonaConfig(data, patch);
+          return json(res, 200, {
+            ok: true,
+            data: { hasKey: Boolean(cfg.apiKey), baseUrl: cfg.baseUrl, model: cfg.model },
+          });
+        } catch (e) {
+          return json(res, 400, { ok: false, error: e?.message || String(e) });
+        }
+      }
+
+      // 试一句：不碰库，只验证钥匙、地址、人格提示词通不通
+      if (method === "POST" && url === "/api/persona-test") {
+        try {
+          const cfg = readPersonaConfig(data);
+          const r = await askBatch(
+            cfg,
+            [
+              { who: "user", ts: Date.now(), text: "今天下午我们去了海边，风特别大，帽子都吹跑了。" },
+              { who: "self", ts: Date.now(), text: "好呀，那下次带上夹子。" },
+            ],
+            "试一句"
+          );
+          return json(res, 200, r.ok ? { ok: true, data: { items: r.items, usage: r.usage } } : { ok: false, error: r.error });
+        } catch (e) {
+          return json(res, 400, { ok: false, error: e?.message || String(e) });
+        }
+      }
+
+      // 后台跑的人格导入任务：同一时间只允许一个（personaJob 在上面声明）
+
+      if (method === "GET" && url === "/api/qq-import/persona-status") {
+        return json(res, 200, { ok: true, data: personaStatus() });
+      }
+
+      if (method === "POST" && url === "/api/qq-import/persona-stop") {
+        if (personaJob && !personaJob.done) personaJob.stop = true; // 这批读完就收手
+        return json(res, 200, { ok: true, data: personaStatus() });
+      }
+
+      if (method === "POST" && url === "/api/qq-import/absorb-persona") {
+        try {
+          if (personaJob && !personaJob.done) {
+            return json(res, 400, { ok: false, error: "她还在读上一段 —— 等读完，或先点停止" });
+          }
+          const body = await readBody(req, 8 * 1024 * 1024);
+          // 来路跟全量计入完全一样：本地路径 / QCE 下载链接
+          let path = String(body.file || body.filePath || "").replace(/^\\\\\?\\/, "");
+          let tmpFile = null;
+          if (!path && body.downloadUrl) {
+            const token = readQceToken();
+            if (!token) return json(res, 200, { ok: false, error: "读不到 QCE 的令牌（它启动了没有？）" });
+            const d = await downloadResult(String(body.downloadUrl), token);
+            if (!d.ok || !d.buf) {
+              return json(res, 200, { ok: false, error: "下载 QCE 的文件失败：" + (d.error || "未知原因") });
+            }
+            const safe = String(body.taskId || "qce").replace(/[^\w.-]/g, "").slice(0, 40) || "qce";
+            tmpFile = join(tmpdir(), `ringmind-qce-${Date.now()}-${safe}.json`);
+            await writeFile(tmpFile, d.buf);
+            path = tmpFile;
+          }
+          if (!path || !existsSync(path)) return json(res, 404, { ok: false, error: "文件不在了：" + path });
+          const stP = statSync(path, { throwIfNoEntry: false });
+          if (!stP || !stP.isFile()) return json(res, 400, { ok: false, error: "这不是一个能读的文件：" + path });
+          if (stP.size > 256 * 1024 * 1024) {
+            return json(res, 400, { ok: false, error: "文件太大（" + Math.round(stP.size / 1048576) + " MB），上限 256 MB" });
+          }
+
+          const cfg = readPersonaConfig(data);
+          if (!cfg.apiKey) {
+            return json(res, 400, { ok: false, error: "还没给她配 API Key —— 在「她的人格」卡里填好再试" });
+          }
+
+          const raw = JSON.parse(readFileSync(path, "utf8"));
+          const parsed = parseExport(raw, readQqBots());
+          if (tmpFile) {
+            try { await unlink(tmpFile); } catch { /* 删不掉算了 */ }
+          }
+          if (!parsed.messages.length) {
+            return json(res, 200, { ok: false, error: "这条会话没有可读的文本" });
+          }
+
+          const batches = chunk(parsed.messages, BATCH_SIZE);
+          // 去重跟全量共用一个队列文件，人格提炼的记忆用 "P|" 前缀的钥匙
+          const qPath = join(data, "qq-import-queue.json");
+          let q = { imported: {}, batches: {}, lastRun: null };
+          try {
+            if (existsSync(qPath)) q = { ...q, ...JSON.parse(readFileSync(qPath, "utf8")) };
+          } catch {}
+          if (!q.imported || typeof q.imported !== "object") q.imported = {};
+          if (!q.batches || typeof q.batches !== "object") q.batches = {};
+
+          const now = Date.now();
+          const batchId = "b" + now.toString(36) + Math.random().toString(36).slice(2, 6);
+          const batchKeys = [];
+
+          personaJob = {
+            phase: "reading",
+            done: false,
+            stop: false,
+            batch: 0,
+            batchTotal: batches.length,
+            remembered: 0,
+            skipped: 0,
+            tokens: 0,
+            error: null,
+            chatName: parsed.chatName,
+            startedAt: now,
+            finishedAt: 0,
+          };
+
+          const job = personaJob;
+          (async () => {
+            for (let i = 0; i < batches.length; i++) {
+              if (job.stop) { job.phase = "stopped"; break; }
+              job.batch = i + 1;
+              const r = await askBatch(cfg, batches[i], parsed.chatName);
+              if (!r.ok) {
+                job.phase = "error";
+                job.error = `第 ${i + 1}/${batches.length} 批没读成：${r.error}`;
+                break;
+              }
+              job.tokens += Number(r.usage?.total_tokens || 0);
+              // 提炼出来的事发生在这批消息的时间段里，取最晚的一条当发生时间
+              const at =
+                batches[i].reduce((m, x) => Math.max(m, Number(x.ts) || 0), 0) || Date.now();
+              for (const it of r.items) {
+                const key =
+                  "P|" +
+                  createHash("sha1").update(String(it.remember).replace(/\s+/g, "")).digest("hex").slice(0, 16);
+                if (q.imported[key]) { job.skipped++; continue; }
+                try {
+                  db.remember({
+                    content: it.remember,
+                    ring: it.ring,
+                    source: parsed.chatType === "group" ? "group" : "private",
+                    speaker: "self", // 记忆是她以自己的视角写的
+                    emotion: it.emotion,
+                    at,
+                    ringEnteredAt: Date.now(),
+                    importBatch: batchId,
+                    skipVault: false,
+                  });
+                  q.imported[key] = at;
+                  batchKeys.push(key);
+                  job.remembered++;
+                } catch { job.skipped++; }
+              }
+              // 每批落一次盘：断了重跑，已经写进库的会自动跳过
+              try {
+                writeFileSync(qPath, JSON.stringify(q, null, 2), "utf8");
+              } catch {}
+            }
+            if (job.phase === "reading") job.phase = "done";
+            // 批次记录：撤回时按这个整批删
+            if (job.remembered > 0) {
+              q.batches[batchId] = {
+                at: now, chat: parsed.chatName, mode: "persona",
+                added: job.remembered, skipped: job.skipped, keys: batchKeys,
+              };
+            }
+            try { writeFileSync(qPath, JSON.stringify(q, null, 2), "utf8"); } catch {}
+            job.done = true;
+            job.finishedAt = Date.now();
+          })();
+
+          return json(res, 200, {
+            ok: true,
+            data: { batches: batches.length, messages: parsed.messages.length, chatName: parsed.chatName },
+          });
+        } catch (e) {
+          return json(res, 400, { ok: false, error: e?.message || String(e) });
+        }
+      }
+
+      // ── 导入历史 / 撤回 ─────────────────────────────
+      // 每一次面板导入都打了批次标（memories.import_batch），撤回就是整批删。
+      // 更早没打标的导入（v4 之前），按"同一次 run 的 ring_entered_at 完全相同、
+      // 且消息时间远早于落库时间"这个特征认出来，同样能撤。
+
+      if (method === "GET" && url === "/api/qq-import/batches") {
+        try {
+          const qPath = join(data, "qq-import-queue.json");
+          let q = { imported: {}, batches: {} };
+          try {
+            if (existsSync(qPath)) q = { ...q, ...JSON.parse(readFileSync(qPath, "utf8")) };
+          } catch {}
+          const out = [];
+          for (const [id, b] of Object.entries(q.batches || {})) {
+            // 库里还剩几条算几条 —— decay 或手动删过就不虚报
+            const c = db.store.db.prepare("SELECT count(*) AS c FROM memories WHERE import_batch = ?").get(id).c;
+            if (c > 0) out.push({ id, tagged: true, at: b.at, chat: b.chat || "", mode: b.mode || "bulk", count: c });
+          }
+          const legacy = db.store.db
+            .prepare(
+              `SELECT ring_entered_at AS re, count(*) AS c, max(created_at) AS mx
+               FROM memories WHERE import_batch IS NULL AND ring = 'ring4'
+               GROUP BY ring_entered_at HAVING c >= 2`
+            )
+            .all();
+          for (const r of legacy) {
+            // 消息时间比落库时间早 6 小时以上，才像"导历史记录"；
+            // qq-bridge 实时入库的 created_at ≈ ring_entered_at，不会误伤
+            if (r.re - r.mx > 6 * 3600 * 1000) {
+              out.push({
+                id: "legacy:" + r.re,
+                tagged: false,
+                at: r.re,
+                chat: "",
+                mode: "bulk · 按落库时间识别",
+                count: r.c,
+              });
+            }
+          }
+          out.sort((a, b) => b.at - a.at);
+          return json(res, 200, { ok: true, data: { batches: out.slice(0, 50) } });
+        } catch (e) {
+          return json(res, 400, { ok: false, error: e?.message || String(e) });
+        }
+      }
+
+      if (method === "POST" && url === "/api/qq-import/import-undo") {
+        try {
+          const body = await readBody(req);
+          const id = String(body.id || "");
+          if (!id) return json(res, 400, { ok: false, error: "没说撤哪一批" });
+
+          const qPath = join(data, "qq-import-queue.json");
+          let q = { imported: {}, batches: {} };
+          try {
+            if (existsSync(qPath)) q = { ...q, ...JSON.parse(readFileSync(qPath, "utf8")) };
+          } catch {}
+          if (!q.imported || typeof q.imported !== "object") q.imported = {};
+          if (!q.batches || typeof q.batches !== "object") q.batches = {};
+
+          let where;
+          let keys = [];
+          if (id.startsWith("legacy:")) {
+            const ts = Number(id.slice(7));
+            if (!Number.isFinite(ts)) return json(res, 400, { ok: false, error: "批次号不对" });
+            where = `import_batch IS NULL AND ring_entered_at = ${ts}`;
+          } else {
+            const b = q.batches[id];
+            if (!b) return json(res, 404, { ok: false, error: "清单里没有这一批了" });
+            where = `import_batch = '${id.replace(/'/g, "''")}'`;
+            keys = b.keys || [];
+          }
+
+          const ids = db.store.db.prepare(`SELECT id FROM memories WHERE ${where}`).all().map((r) => r.id);
+          if (!ids.length) return json(res, 404, { ok: false, error: "这批记忆已经不在库里了" });
+
+          // 总库里的原文一起清（meta 里存着 memoryId）
+          const delVault = db.store.db.prepare(
+            "DELETE FROM vault WHERE meta LIKE '%' || ? || '%'"
+          );
+          for (const mid of ids) delVault.run(`"memoryId":"${mid}"`);
+          const p = db.store.db
+            .prepare(`DELETE FROM points WHERE memory_id IN (SELECT id FROM memories WHERE ${where})`)
+            .run();
+          const m = db.store.db.prepare(`DELETE FROM memories WHERE ${where}`).run();
+          try { db.store.logOp("import-undo", { removed: m.changes, batch: id }); } catch {}
+
+          // 去重钥匙一并清掉 —— 撤了就该能重导
+          for (const k of keys) delete q.imported[k];
+          if (!id.startsWith("legacy:")) delete q.batches[id];
+          try { writeFileSync(qPath, JSON.stringify(q, null, 2), "utf8"); } catch {}
+
+          return json(res, 200, { ok: true, data: { removed: m.changes, points: p.changes } });
+        } catch (e) {
+          return json(res, 400, { ok: false, error: e?.message || String(e) });
+        }
+      }
+
+      // ── 缓冲区：导出的文件先落到这儿，看不看、导不导、什么时候导，都由人决定 ──
+      // 文件放在 <数据目录>/imports/ 下 —— 跟着库走（换库就换一片缓冲区），
+      // 数据目录不在 web 静态目录里，面板外部拿不到。
+      const stashDir = () => join(data, "imports");
+      const stashMetaPath = () => join(stashDir(), "stash.json");
+
+      function readStash() {
+        try {
+          const j = JSON.parse(readFileSync(stashMetaPath(), "utf8"));
+          return Array.isArray(j) ? j : [];
+        } catch {
+          return [];
+        }
+      }
+      function writeStash(list) {
+        mkdirSync(stashDir(), { recursive: true });
+        writeFileSync(stashMetaPath(), JSON.stringify(list, null, 2), "utf8");
+      }
+
+      if (method === "GET" && url === "/api/qq-import/stash") {
+        return json(res, 200, { ok: true, data: { list: readStash() } });
+      }
+
+      if (method === "DELETE" && url.startsWith("/api/qq-import/stash?")) {
+        const id = new URL(url, "http://x").searchParams.get("id") || "";
+        const list = readStash();
+        const hit = list.find((s) => s.id === id);
+        if (!hit) return json(res, 404, { ok: false, error: "缓冲区里没有这个文件了" });
+        try { unlinkSync(hit.file); } catch { /* 文件不在就算了 */ }
+        writeStash(list.filter((s) => s.id !== id));
+        return json(res, 200, { ok: true, data: { removed: id } });
+      }
+
+      if (method === "POST" && url === "/api/qq-import/stash") {
+        try {
+          const body = await readBody(req, 8 * 1024 * 1024);
+          // 来路跟导入完全一样：QCE 下载链接 / 本地路径
+          let path = String(body.file || body.filePath || "").replace(/^\\\\\?\\/, "");
+          let tmpFile = null;
+          if (!path && body.downloadUrl) {
+            const token = readQceToken();
+            if (!token) return json(res, 200, { ok: false, error: "读不到 QCE 的令牌（它启动了没有？）" });
+            const d = await downloadResult(String(body.downloadUrl), token);
+            if (!d.ok || !d.buf) {
+              return json(res, 200, { ok: false, error: "下载 QCE 的文件失败：" + (d.error || "未知原因") });
+            }
+            const safe = String(body.taskId || "qce").replace(/[^\w.-]/g, "").slice(0, 40) || "qce";
+            tmpFile = join(tmpdir(), `ringmind-qce-${Date.now()}-${safe}.json`);
+            await writeFile(tmpFile, d.buf);
+            path = tmpFile;
+          }
+          if (!path || !existsSync(path)) return json(res, 404, { ok: false, error: "文件不在了：" + path });
+          const stS = statSync(path, { throwIfNoEntry: false });
+          if (!stS || !stS.isFile()) return json(res, 400, { ok: false, error: "这不是一个能读的文件：" + path });
+          if (stS.size > 256 * 1024 * 1024) {
+            return json(res, 400, { ok: false, error: "文件太大（" + Math.round(stS.size / 1048576) + " MB），上限 256 MB" });
+          }
+
+          // 同一个 QCE 任务别重复堆：已经在缓冲区就原样返回
+          const list = readStash();
+          if (body.taskId) {
+            const dup = list.find((s) => s.taskId && s.taskId === String(body.taskId));
+            if (dup) {
+              if (tmpFile) { try { await unlink(tmpFile); } catch {} }
+              return json(res, 200, { ok: true, data: { ...dup, dup: true } });
+            }
+          }
+
+          // 先解析出摘要（会话名、条数、时间段），列表就不用每次重新读大文件
+          const raw = JSON.parse(readFileSync(path, "utf8"));
+          const parsed = parseExport(raw, readQqBots());
+          if (!parsed.messages.length) {
+            if (tmpFile) { try { await unlink(tmpFile); } catch {} }
+            return json(res, 200, { ok: false, error: "这份导出里没有可读的文本，不收了" });
+          }
+          const tss = parsed.messages.map((m) => Number(m.ts) || 0).filter(Boolean);
+
+          mkdirSync(stashDir(), { recursive: true });
+          const id = "s" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
+          const file = join(stashDir(), id + ".json");
+          // 先落进缓冲区，再清临时文件 —— 顺序别反
+          copyFileSync(path, file);
+          if (tmpFile) { try { await unlink(tmpFile); } catch {} }
+
+          const entry = {
+            id,
+            taskId: body.taskId ? String(body.taskId) : "",
+            chatName: parsed.chatName,
+            chatType: parsed.chatType,
+            peerUin: parsed.peerUin,
+            messages: parsed.total,
+            kept: parsed.kept,
+            minTs: tss.length ? Math.min(...tss) : 0,
+            maxTs: tss.length ? Math.max(...tss) : 0,
+            bytes: stS.size,
+            file,
+            savedAt: Date.now(),
+          };
+          list.unshift(entry);
+          writeStash(list);
+          return json(res, 200, { ok: true, data: entry });
+        } catch (e) {
+          return json(res, 400, { ok: false, error: e?.message || String(e) });
+        }
+      }
+
+      // 开始下载并解压。这是"程序自动下一个第三方 exe"的动作，
+      // 界面那边必须先弹确认；这里只认"确认过了"的请求。
+      if (method === "POST" && url === "/api/qq-import/install") {
+        try {
+          const started = startInstall(QCE_DIR);
+          return json(res, 200, {
+            ok: true,
+            data: { started, state: installState(), dir: QCE_DIR },
+          });
+        } catch (e) {
+          return json(res, 200, { ok: false, error: e?.message || String(e) });
+        }
+      }
+
+      // 轮询安装进度
+      if (method === "GET" && url === "/api/qq-import/install-status") {
+        const launcher = existsSync(QCE_DIR) ? findLauncher(QCE_DIR) : null;
+        return json(res, 200, {
+          ok: true,
+          data: {
+            ...installState(),
+            dir: QCE_DIR,
+            installed: Boolean(launcher),
+            launcher,
+            qq: await qqRunning(),
+          },
+        });
+      }
+
+      // 启动 napiLoader.bat。会拉起一个带注入的 QQ，所以先确认 QQ 是退出的。
+      if (method === "POST" && url === "/api/qq-import/launch") {
+        try {
+          const launcher = findLauncher(QCE_DIR);
+          if (!launcher) {
+            return json(res, 200, { ok: false, error: "还没装，先点下载" });
+          }
+          const r = await launchQce(launcher);
+          return json(res, 200, r.ok ? { ok: true, data: { launcher } } : { ok: false, error: r.error });
+        } catch (e) {
+          return json(res, 200, { ok: false, error: e?.message || String(e) });
+        }
+      }
+
       if (method === "POST" && url === "/api/pick-folder") {
-        // VBScript → Shell.Application.BrowseForFolder
-        // PowerShell 的 WinForms FolderBrowserDialog 需要交互桌面（后台进程弹不出），
-        // 换用系统 COM 组件，wscript.exe 自带消息泵，不依赖窗口站。
+        // 用 PowerShell + WinForms，配一个 TopMost 的隐形父窗体。
+        // 以前用 VBScript 的 Shell.Application.BrowseForFolder(0, ...)，第一个参数是父窗口句柄，
+        // 传 0 就没有父窗口 —— 对话框会被浏览器盖在后面，用户以为点了没反应。
+        // 给它一个 TopMost 的隐形窗体当 owner，它就会顶在最前面。
         if (process.platform !== "win32") {
           return json(res, 400, { ok: false, error: "非 Windows 还不支持" });
         }
@@ -1816,35 +2665,48 @@ export async function createServer({ dataDir, dbPath, port = 5173, host = "127.0
           const { execFile } = await import("node:child_process");
 
           const tag = randomBytes(4).toString("hex");
-          const vbsPath = join(tmpdir(), `ringmind_pick_${tag}.vbs`);
+          const psPath = join(tmpdir(), `ringmind_pick_${tag}.ps1`);
           const outPath = join(tmpdir(), `ringmind_pick_${tag}.txt`);
 
-          const vbs = [
-            'Set objShell = CreateObject("Shell.Application")',
-            'Set objFolder = objShell.BrowseForFolder(0, "选一个文件夹放记忆库", 0, 0)',
-            "If Not objFolder Is Nothing Then",
-            "  Set objFSO = CreateObject(\"Scripting.FileSystemObject\")",
-            `  Set objFile = objFSO.CreateTextFile("${outPath}", True, True)`,
-            "  objFile.Write objFolder.Self.Path",
-            "  objFile.Close",
-            "End If",
+          const ps = [
+            "Add-Type -AssemblyName System.Windows.Forms",
+            "$form = New-Object System.Windows.Forms.Form",
+            "$form.TopMost = $true",
+            "$form.ShowInTaskbar = $false",
+            "$form.FormBorderStyle = 'None'",
+            "$form.StartPosition = 'CenterScreen'",
+            "$form.Width = 1",
+            "$form.Height = 1",
+            "$form.Opacity = 0",
+            "$dlg = New-Object System.Windows.Forms.FolderBrowserDialog",
+            '$dlg.Description = "选一个文件夹放记忆库"',
+            "$dlg.ShowNewFolderButton = $true",
+            "$r = $dlg.ShowDialog($form)",
+            "$form.Dispose()",
+            "if ($r -eq [System.Windows.Forms.DialogResult]::OK) {",
+            `  [System.IO.File]::WriteAllText("${outPath}", $dlg.SelectedPath, [System.Text.Encoding]::UTF8)`,
+            "}",
           ].join("\r\n");
 
-          // wscript 对 UTF-8 无 BOM 的 .vbs 会按系统 ANSI(GBK) 解析，中文在解析阶段就烂了；
-          // 必须写成 UTF-16 LE + BOM，它才认（\uFEFF 在 utf16le 下就是 FF FE）
-          await writeFile(vbsPath, "\uFEFF" + vbs, "utf16le");
+          // UTF-8 带 BOM，PowerShell 才按 UTF-8 读中文
+          await writeFile(psPath, "\uFEFF" + ps, "utf8");
 
           await new Promise((ok, fail) => {
-            execFile("wscript.exe", [vbsPath], { timeout: 180000 }, (err) => {
-              try { unlink(vbsPath); } catch { /* 删不掉算了 */ }
-              if (err) return fail(err);
-              ok();
-            });
+            execFile(
+              "powershell.exe",
+              ["-NoProfile", "-ExecutionPolicy", "Bypass", "-STA", "-File", psPath],
+              { timeout: 180000 },
+              (err) => {
+                try { unlink(psPath); } catch { /* 删不掉算了 */ }
+                if (err) return fail(err);
+                ok();
+              }
+            );
           });
 
           let p = null;
           if (existsSync(outPath)) {
-            p = readFileSync(outPath, "utf16le").trim() || null;
+            p = readFileSync(outPath, "utf8").replace(/^\uFEFF/, "").trim() || null;
             try { unlink(outPath); } catch { /* 删不掉算了 */ }
           }
           return json(res, 200, { ok: true, data: { path: p } });
@@ -2121,7 +2983,7 @@ export async function createServer({ dataDir, dbPath, port = 5173, host = "127.0
         );
 
         // 每次请求先把 QQ 账本同步进库（幂等，同一行覆盖）
-        const sync = syncDshToDb(db.store);
+        const sync = await syncDshToDb(db.store);
 
         // 优先读库：账本哪天丢了历史还在
         const fromDb = dbTokenRecords(db.store, hours);

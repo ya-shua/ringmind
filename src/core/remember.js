@@ -49,6 +49,8 @@ export function hookWeights(n) {
  * @param {number} [input.ringEnteredAt] 进圈时间，默认等于 at。
  *        导入历史数据时用：at 留真实历史时间（保住顺序），
  *        ringEnteredAt 给现在（从这个时刻才开始衰减）。
+ * @param {string} [input.importBatch]  导入批次标记。面板导入的才标，
+ *        有了它整批可撤回；日常记住的不传，保持 NULL。
  */
 export function remember(store, config, input) {
   const {
@@ -101,6 +103,7 @@ export function remember(store, config, input) {
     content: content || cleanPoints.join("，"),
     emotion,
     pinned,
+    importBatch: input?.importBatch ?? null,
   });
 
   // 插点：顺序即重要性，1 最重要

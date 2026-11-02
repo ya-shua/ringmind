@@ -142,6 +142,56 @@ export function recall(store, config, cues, { limit = 5, now = Date.now() } = {}
     }
   }
 
+
+  // ⑥ 总库：只有面板上明确打开了才翻原始存档
+  //    总库存的是每条聊天的原文，翻出来等于把已经忘掉的又摊回她面前 —— 所以默认关着。
+  //    只在线索够具体（≥3 字）时才翻，且按「命中几条线索」排，避免被「私聊」这种词灌满。
+  //    只有「自定义」模式才真的接进来 —— 三档固定模式退回只存标记，她翻不到原文。
+  if (
+    config.mode === "custom" &&
+    config.vaultAccessible === true &&
+    typeof store.searchVault === "function"
+  ) {
+    const seen = new Set(top.map((r) => String(r.content ?? "").trim()));
+    const hitsByRow = new Map(); // row.id -> { row, n }
+    for (const cue of cueList) {
+      for (const row of store.searchVault(cue, 12)) {
+        const cur = hitsByRow.get(row.id) || { row, n: 0, chars: 0 };
+        cur.n += 1;
+        cur.chars += cue.length;
+        hitsByRow.set(row.id, cur);
+      }
+    }
+    // 线索总字数不到 3 就别翻：单靠「黄色」「私聊」这种词，翻出来的全是噪音
+    const ranked = [...hitsByRow.values()]
+      .filter((x) => x.chars >= 3)
+      .sort((a, b) => b.n - a.n || (b.row.ts || 0) - (a.row.ts || 0));
+    const extra = [];
+    const cap = Math.min(3, limit);
+    for (const { row } of ranked) {
+      if (extra.length >= cap) break;
+      const text = String(row.text ?? "").trim();
+      if (!text || seen.has(text)) continue;
+      seen.add(text);
+      extra.push({
+        id: "vault:" + row.id,
+        content: text,
+        ring: "vault",
+        ringLabel: "总库（原始记录）",
+        points: [text],
+        recovered: 0,
+        hitWeight: 0,
+        ceiling: 1,
+        ratio: 1,
+        fromVault: true,
+        vaultTs: row.ts ?? null,
+        vaultSpeaker: row.speaker ?? null,
+        vaultSource: row.source ?? null,
+      });
+    }
+    if (extra.length) return [...top, ...extra];
+  }
+
   return top;
 }
 

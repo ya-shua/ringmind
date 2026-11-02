@@ -58,3 +58,9 @@ node-path.txt
 # 改动前的原样备份（本地回滚用，不进仓库）
 *.bak
 *.bak-*
+
+# 第三方工具（QQ Chat Exporter，几十 MB，不是我们的代码）
+vendor/
+
+# 重写前的原文件备份（本地回滚用，不进仓库）
+backups/
