@@ -1,0 +1,38 @@
+name: 隐私门禁
+
+# 本地 pre-commit 能拦住绝大多数情况，但它有两处漏：
+#   ① .git/hooks 不跟仓库走，换台机器 / 重新 clone 就没了
+#   ② git commit --no-verify 能绕过
+# 所以推送后在 GitHub 上再查一遍。查不过会在 Actions 里亮红叉。
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  privacy:
+    name: 查隐私和内部文档
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: 跑门禁
+        run: node scripts/privacy-gate.mjs --all
+
+      - name: 确认内部目录没被强制加进来
+        run: |
+          # .gitignore 正常能挡住 docs/ 这些，但有人用 git add -f 就能硬塞。
+          # 这里显式查一遍已跟踪文件里有没有它们。
+          bad=$(git ls-files | grep -E '^(docs|demo|vendor|backups|backup|internal)/' || true)
+          if [ -n "$bad" ]; then
+            echo "::error::这些目录不该进仓库："
+            echo "$bad"
+            exit 1
+          fi
+          echo "内部目录检查通过"
