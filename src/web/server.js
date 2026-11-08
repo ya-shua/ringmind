@@ -2953,7 +2953,7 @@ export async function createServer({ dataDir, dbPath, port = 5173, host = "127.0
 
       if (method === "POST" && url === "/api/decay") {
         try {
-          return json(res, 200, { ok: true, data: db.decay() });
+          return json(res, 200, { ok: true, data: db.decay({ via: "api" }) });
         } catch (e) {
           return json(res, 500, { ok: false, error: e.message });
         }
@@ -3005,6 +3005,68 @@ export async function createServer({ dataDir, dbPath, port = 5173, host = "127.0
 
       if (method === "GET" && url === "/api/decay-preview") {
         return json(res, 200, { ok: true, data: { plan: db.planDecay() } });
+      }
+
+      // 更新日志：每次降级任务真跑过都留一条（含"跑了但一条没动"）。
+      // ?limit= 默认 50，最多 200。
+      if (method === "GET" && url.split("?")[0] === "/api/decay-log") {
+        const q = new URL(url, "http://x").searchParams;
+        const want = Number(q.get("limit"));
+        const limit = Number.isFinite(want) && want > 0 ? Math.min(200, Math.floor(want)) : 50;
+
+        const rows = db.store.db
+          .prepare("SELECT ts, payload FROM ops WHERE kind = 'decay' ORDER BY ts DESC LIMIT ?")
+          .all(limit)
+          .map((r) => {
+            let p = {};
+            try {
+              p = JSON.parse(r.payload || "{}");
+            } catch {
+              /* 老记录解析不了就当空 */
+            }
+            return {
+              at: r.ts,
+              applied: p.applied ?? 0,
+              forgotten: p.forgotten ?? 0,
+              softened: p.softened ?? 0,
+              via: p.via ?? null,
+            };
+          });
+
+        // 旧版本有个盲点：跑了但一条没动就不写 ops，只留了 .decay-state.json。
+        // 它比最后一条 ops 新，就补一行「只知道跑了、不知道动了几条」，别让面板误报「今天还没跑」。
+        let stateAt = 0;
+        try {
+          stateAt = Number(JSON.parse(readFileSync(resolve(HERE, "../../mcp/.decay-state.json"), "utf8")).lastDecayAt) || 0;
+        } catch {
+          /* 没这个文件就算了 */
+        }
+        if (stateAt && (!rows.length || stateAt > rows[0].at)) {
+          rows.unshift({
+            at: stateAt,
+            applied: null,
+            forgotten: null,
+            softened: null,
+            via: "mcp-start",
+            estimated: true,
+          });
+        }
+
+        const lastAt = rows.length ? rows[0].at : null;
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+
+        return json(res, 200, {
+          ok: true,
+          data: {
+            runs: rows,
+            lastAt,
+            /** 距上次运行多少毫秒；从没跑过就是 null */
+            sinceLast: lastAt ? Date.now() - lastAt : null,
+            /** 今天还没跑过 = 该跑的没跑（插件不另设定时器，接入时补） */
+            overdue: lastAt ? lastAt < todayStart.getTime() : true,
+          },
+        });
       }
 
       // 记忆海：整座库画成三维星海的数据。vault=1 才带总库幻影（总库可能很大，默认不画）

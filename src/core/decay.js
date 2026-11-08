@@ -146,7 +146,7 @@ function pickOverflow(store, ringId, cap, quota) {
  * @param {object} opts
  * @param {boolean} [opts.dryRun] 只算不写
  */
-export function runDecay(store, config, { now = Date.now(), dryRun = false } = {}) {
+export function runDecay(store, config, { now = Date.now(), dryRun = false, via = null } = {}) {
   const plan = planDecay(store, config, now);
   if (dryRun) return { plan, applied: 0, forgotten: 0 };
 
@@ -170,9 +170,10 @@ export function runDecay(store, config, { now = Date.now(), dryRun = false } = {
     }
   }
 
-  if (applied || forgotten) {
-    store.logOp("decay", { applied, forgotten, softened, at: now });
-  }
+  // 每次真跑都要留一条，哪怕一条都没动。
+  // 只记"有变动"的那次，日志里就分不出"没跑"和"跑了没动" ——
+  // 问她"上次整理是什么时候"会答不上来，而这是她最想知道的一件事。
+  store.logOp("decay", { applied, forgotten, softened, at: now, ...(via ? { via } : {}) });
 
   return { plan, applied, forgotten, softened };
 }

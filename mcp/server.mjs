@@ -59,26 +59,44 @@ try {
 const DECAY_STATE = join(HERE, '.decay-state.json')
 const DAY = 86400000
 
-function catchUpDecay() {
+/** 同一天（按本地日历）—— 用来判断"今天跑过没有" */
+function sameLocalDay(a, b) {
+  const x = new Date(a)
+  const y = new Date(b)
+  return (
+    x.getFullYear() === y.getFullYear() && x.getMonth() === y.getMonth() && x.getDate() === y.getDate()
+  )
+}
+
+function catchUpDecay(via = 'mcp-start') {
   const now = Date.now()
   let last = 0
   try { last = Number(JSON.parse(readFileSync(DECAY_STATE, 'utf8')).lastDecayAt) || 0 } catch { /* 第一次跑 */ }
-  if (now - last < DAY) return
+  // 闸按"自然日"算，不按"距上次满 24 小时" ——
+  // 后者会跟着接入时刻往后漂，漂过你常用的那个时间点就整整漏一天（历史上 11/5 20:57 → 11/7 23:24 漏了 50 小时）。
+  if (last && sameLocalDay(last, now)) return
+
+  // 先占住今天再动手：两个会话同一秒起来时，后到的那个看见"今天已跑"就跳过，
+  // 不会各跑一次导致同一天掉两圈。（写文件是一瞬间的事，抢到的窗口极窄）
+  try { writeFileSync(DECAY_STATE, JSON.stringify({ lastDecayAt: now }, null, 2)) } catch { /* 写不了就照跑 */ }
+
   // 错过几天就补几轮（每轮只掉一圈，跑一次补不回来）
-  const rounds = Math.min(30, Math.max(1, Math.floor((now - Math.max(last, now - DAY)) / DAY)))
-  let base = last || now - DAY
-  for (let i = 0; i < rounds; i++) {
-    try { db.decay({ now: base + DAY * (i + 1) }) } catch (e) {
+  const missed = Math.min(30, Math.max(1, Math.round((now - last) / DAY)))
+  const start = last || now - DAY
+  for (let i = 0; i < missed; i++) {
+    // 最后一轮用真实的 now：别拿"上次 + N 天"去算，那可能是个未来时刻
+    const at = i === missed - 1 ? now : start + DAY * (i + 1)
+    try { db.decay({ now: at, via }) } catch (e) {
       process.stderr.write(`[ring-mcp] decay 失败: ${e?.message ?? e}\n`)
     }
   }
   try { writeFileSync(DECAY_STATE, JSON.stringify({ lastDecayAt: now }, null, 2)) } catch { /* 写不了就算了，下次再试 */ }
 }
 
-catchUpDecay()
+catchUpDecay('mcp-start')
 
 /* 长驻会话的补漏：每小时看一次表，真的衰减一天最多一次，且贴着凌晨 4 点跑。
-   catchUpDecay 内部有 24 小时闸，这里只负责别让长开的会话错过那一天。 */
+   catchUpDecay 内部有"今天跑过就不再跑"的闸，这里只负责别让长开的会话错过那一天。 */
 function msUntilNextCompaction() {
   const n = new Date();
   const four = new Date(n.getFullYear(), n.getMonth(), n.getDate(), 4, 0, 0, 0);
@@ -86,7 +104,7 @@ function msUntilNextCompaction() {
   return four - n;
 }
 setTimeout(function compactionTick() {
-  try { catchUpDecay() } catch { /* 补跑失败就等下一班 */ }
+  try { catchUpDecay('tick') } catch { /* 补跑失败就等下一班 */ }
   setTimeout(compactionTick, msUntilNextCompaction())
 }, msUntilNextCompaction())
 
@@ -183,6 +201,29 @@ function toolOverview() {
   return lines.join('\n')
 }
 
+/**
+ * 自动入库（给桥接层 / 视觉插件用的机器工具，不进她的工具清单）：
+ * 她没表态的媒体描述落闲聊圈 —— 和 ring-ingest 的合并入库同一语义。
+ * 故意不放进 TOOLS：工具清单是她的认知边界，自动入库不该被她（或 agent）点名调用。
+ * 插件（留影）知道工具名，直接 tools/call 即可。
+ */
+function toolIngest({ content, points, source, speaker, at }) {
+  const text = String(content ?? '').trim()
+  if (!text) throw new Error('content 不能为空')
+  const input = {
+    content: text,
+    ring: 'ring4',            // 自动入库 = 接盘层，她不知道有这一格
+    speaker: String(speaker ?? 'user'),
+    source: String(source ?? 'private'),
+    skipVault: true,          // 原文已由桥接层逐条备份进总库，描述是派生物不重复存
+  }
+  if (Array.isArray(points) && points.length) input.points = points.map((p) => String(p).trim()).filter(Boolean)
+  if (at) input.at = Number(at)
+  const mem = db.remember(input)
+  const pts = mem?.points?.length ?? 0
+  return `留影入库（#${mem?.id ?? '?'} · 闲聊圈 · ${pts} 点）：${text.slice(0, 60)}`
+}
+
 // 没有 toolForget —— 她这边不提供删除。
 // 分工铁律：她决定记什么，记忆库决定什么时候淡、什么时候掉。
 // 「她不能直接删数据」写死在 docs/交接.md 第 92 行。
@@ -277,6 +318,7 @@ const HANDLERS = {
   ring_recall: toolRecall,
   ring_search: toolSearch,
   ring_overview: toolOverview,
+  ring_ingest: toolIngest, // 机器工具：不进 TOOLS（她的认知边界），插件直呼工具名
 }
 
 /* ───────────────────────── JSON-RPC over stdio ───────────────────────── */
