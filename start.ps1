@@ -44,10 +44,12 @@ if (-not $node) {
 # 已经在跑就别再起一个
 $busy = Get-NetTCPConnection -LocalPort 5173 -State Listen -ErrorAction SilentlyContinue
 if ($busy) {
-  Say "" "Yellow"
-  Say "  面板已经在运行了，直接打开浏览器。" "Yellow"
-  Start-Process "http://127.0.0.1:5173/"
-  if (-not $Quiet) { Read-Host "按回车关闭这个窗口" }
+  if (-not $Quiet) {
+    Say "" "Yellow"
+    Say "  面板已经在运行了，直接打开浏览器。" "Yellow"
+    Start-Process "http://127.0.0.1:5173/"
+    Read-Host "按回车关闭这个窗口"
+  }
   exit 0
 }
 
@@ -55,19 +57,22 @@ Say "" "Cyan"
 Say "  环形的心 - 记忆面板" "Cyan"
 Say "  =========================================" "DarkGray"
 Say "  地址: http://127.0.0.1:5173"
-Say "  三秒后自动打开浏览器"
-Say ""
 if ($Quiet) {
-  Say "  在后台跑，窗口关了也不影响。要停就双击「停止面板」。" "DarkGray"
+  Say "  后台静默运行：不开浏览器、不弹窗（页面归海螺控制台管）。" "DarkGray"
 } else {
+  Say "  三秒后自动打开浏览器"
+  Say ""
   Say "  关掉这个窗口 = 关闭面板" "DarkGray"
 }
 Say ""
 
-Start-Process powershell -ArgumentList @(
-  "-NoProfile", "-WindowStyle", "Hidden", "-Command",
-  "Start-Sleep 3; Start-Process 'http://127.0.0.1:5173/'"
-) | Out-Null
+# 只有自己双击跑（非 Quiet）才开浏览器；被海螺拉起时保持安静
+if (-not $Quiet) {
+  Start-Process powershell -ArgumentList @(
+    "-NoProfile", "-WindowStyle", "Hidden", "-Command",
+    "Start-Sleep 3; Start-Process 'http://127.0.0.1:5173/'"
+  ) | Out-Null
+}
 
 & $node "$here\src\web\server.js" --port 5173
 
