@@ -2544,7 +2544,7 @@
 
       <div class="card wide">
         <div class="card-title">记忆列表</div>
-        <div class="card-desc">打开就铺最近 50 条，最新的在上面。想找哪条就搜，也可以只看某一圈；「剩余」是还看得见的点占原来的几成。</div>
+        <div class="card-desc">打开就铺最近 50 条，最新的在上面。想找哪条就搜，也可以只看某一圈；「还能装」是<b>这一圈还剩多少位置</b>（按比例的，装满了会挤掉最老的）。</div>
         <div class="browse-toolbar">
           <input type="text" id="browse-q" placeholder="搜内容……留空按时间列全部">
           <select id="browse-ring">
@@ -2562,7 +2562,7 @@
         </div>
         <div class="scroll-box browse-scroll">
           <table id="browse-table">
-            <tr><th>时刻</th><th>记得的</th><th>在哪</th><th style="text-align:right">剩余</th><th>时间</th></tr>
+            <tr><th>时刻</th><th>记得的</th><th>在哪</th><th style="text-align:right">还能装</th><th>时间</th></tr>
           </table>
         </div>
       </div>
@@ -4084,6 +4084,8 @@
 
   /** 搜索：把结果铺回记忆列表。空关键词 = 按时间铺最近 50 条，页面加载也走这一套 */
   let runBrowseSearch = null;
+  // 每圈还剩几个位置（id → {cap, total}），由概览那次请求顺手存下来给列表用
+  let RING_ROOM = null;
   {
     const input = document.getElementById('browse-q');
     const ringSel = document.getElementById('browse-ring');
@@ -4121,8 +4123,6 @@
           head +
           hits
             .map((m) => {
-              const pts = m.points || [];
-              const vis = pts.filter((p) => p.visible).length;
               // 时刻（几时几分）放在这一条最前面，日期（几月几日）留在最后 ——
               // 时刻让人一眼排出先后，日期负责定位是哪天。
               const clock = m.created_at
@@ -4131,12 +4131,31 @@
               const when = m.created_at
                 ? new Date(m.created_at).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' })
                 : '';
-              const pct = pts.length > 0 ? Math.round((vis / pts.length) * 100) : 0;
+              // 「还能装」= 这一圈还剩多少位置，按比例显示（同一圈的行当然一样）
+              const room = RING_ROOM ? RING_ROOM[m.ring] : null;
+              let roomText = '—';
+              let roomTitle = '这一圈的容量还不知道';
+              if (room) {
+                if (room.cap == null) {
+                  roomText = '∞';
+                  roomTitle = '这一圈不设上限';
+                } else if (room.cap > 0) {
+                  const left = Math.max(0, room.cap - room.total);
+                  const leftPct = Math.round((left / room.cap) * 100);
+                  roomText = leftPct + '%';
+                  roomTitle =
+                    '这一圈装了 ' + room.total + ' / ' + room.cap + ' 条，还能装 ' + left + ' 条（' + leftPct + '%）' +
+                    (left === 0 ? ' —— 已经满了，再记就挤掉最老的' : '');
+                } else {
+                  roomText = '0%';
+                  roomTitle = '这一圈上限是 0';
+                }
+              }
               return (
                 '<tr><td class="muted nowrap">' + clock + '</td>' +
                 '<td>' + esc(String(m.content).slice(0, 60)) + '</td>' +
                 '<td class="nowrap"><span class="pill">' + esc(m.ringLabel || RING_LABEL[m.ring] || m.ring) + '</span></td>' +
-                '<td class="num" title="还剩 ' + vis + ' / ' + pts.length + ' 个点">' + pct + '%</td>' +
+                '<td class="num" title="' + esc(roomTitle) + '">' + roomText + '</td>' +
                 '<td class="muted">' + when + '</td></tr>'
               );
             })
@@ -5513,6 +5532,12 @@
       // 模式：把选中那档的数值铺成条
       MODES_CACHE = modes;
       renderModeFacts(selectedMode || data.mode);
+
+      // 各圈还剩几个位置 —— 记下来给记忆列表的「还能装」用（列表就在下面几行铺）
+      if (Array.isArray(data.rings)) {
+        RING_ROOM = {};
+        for (const r of data.rings) RING_ROOM[r.id] = { cap: r.cap == null ? null : r.cap, total: r.total || 0 };
+      }
 
       // 记忆列表：打开页面就铺最近 50 条，和点「搜索」留空是同一套
       if (runBrowseSearch) runBrowseSearch();

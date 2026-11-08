@@ -1,6 +1,6 @@
 {
   "name": "ringmind",
-  "version": "1.5.1",
+  "version": "1.5.2",
   "private": true,
   "type": "module",
   "description": "环形的心 — 一个会遗忘的记忆库，给 AI 角色用",
