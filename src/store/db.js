@@ -8,7 +8,7 @@
 import { DatabaseSync } from "node:sqlite";
 import { existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import { SCHEMA_SQL, metaSeed, SCHEMA_VERSION, migrate } from "./schema.js";
+import { SCHEMA_SQL, metaSeed, SCHEMA_VERSION, migrate, ensureIndexes } from "./schema.js";
 
 export class Store {
   /** @param {DatabaseSync} db */
@@ -55,12 +55,15 @@ export class Store {
     if (!cur) {
       // 空库，建表语句已经是最新的
       this.setMeta("schema_version", String(SCHEMA_VERSION));
+      ensureIndexes(this.db);
       return;
     }
     if (cur < SCHEMA_VERSION) {
       migrate(this.db, cur);
       this.setMeta("schema_version", String(SCHEMA_VERSION));
     }
+    // 老库走完 migrate 才有的列，索引在这之后补；新库也要（migrate 压根没跑）
+    ensureIndexes(this.db);
   }
 
   _seedMeta(name) {
@@ -169,8 +172,8 @@ export class Store {
     this.db
       .prepare(
         `INSERT INTO memories
-           (id, created_at, ring_entered_at, born_load, ring, source, speaker, content, emotion, hits, pinned, note, import_batch, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+           (id, created_at, ring_entered_at, born_load, ring, source, speaker, content, emotion, hits, pinned, note, note_suspect, message_id, import_batch, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         m.id,
@@ -185,10 +188,75 @@ export class Store {
         m.hits ?? 0,
         m.pinned ? 1 : 0,
         m.note ?? null,
+        m.noteSuspect ? 1 : 0,
+        m.messageId ?? null,
         m.importBatch ?? null,
         m.updatedAt ?? Date.now()
       );
     return this.getMemory(m.id);
+  }
+
+  /** 按来源消息 id 找已有的那条（幂等：同一条消息投递两次只留一条） */
+  findByMessageId(messageId) {
+    if (!messageId) return null;
+    return this.db.prepare("SELECT * FROM memories WHERE message_id = ?").get(String(messageId)) ?? null;
+  }
+
+  /** 这条消息收到过吗？→ { memory_id } 或 null（合并进来的那句也能查到） */
+  seenMessage(messageId) {
+    if (!messageId) return null;
+    return this.db.prepare("SELECT memory_id FROM seen_messages WHERE message_id = ?").get(String(messageId)) ?? null;
+  }
+
+  /** 记下"这条消息已经处理过"（新开的、并进来的都要记） */
+  markSeen(messageId, memoryId, ts = Date.now()) {
+    if (!messageId) return;
+    this.db
+      .prepare("INSERT OR IGNORE INTO seen_messages (message_id, memory_id, ts) VALUES (?, ?, ?)")
+      .run(String(messageId), String(memoryId), ts);
+  }
+
+  /** 自动入库的合并游标（跨进程续上同一段对话） */
+  getConvState(slot) {
+    return this.db.prepare("SELECT * FROM conv_state WHERE slot = ?").get(String(slot)) ?? null;
+  }
+
+  setConvState(slot, memoryId, firstTs, lastTs) {
+    this.db
+      .prepare(
+        `INSERT INTO conv_state (slot, memory_id, first_ts, last_ts) VALUES (?, ?, ?, ?)
+         ON CONFLICT(slot) DO UPDATE SET memory_id = excluded.memory_id,
+           first_ts = excluded.first_ts, last_ts = excluded.last_ts`
+      )
+      .run(String(slot), String(memoryId), firstTs, lastTs);
+  }
+
+  /** 往一条记忆后面接一段话（合并用）：内容拼上、点补上、时间更新 */
+  appendToMemory(id, extraText, extraPoints = []) {
+    const mem = this.getMemory(id);
+    if (!mem) return null;
+    const joined = extraText ? (mem.content ? mem.content + "；" + extraText : extraText) : mem.content;
+    this.db
+      .prepare("UPDATE memories SET content = ?, updated_at = ? WHERE id = ?")
+      .run(joined, Date.now(), id);
+    // 光改 content 不够：遗忘靠删点、检索靠点匹配。
+    // 不补点的话，后接进来的话在 points 里不存在 —— 搜不到、也淡不掉，成一条"删不掉的尾巴"。
+    for (const p of extraPoints) {
+      if (p) this.insertPoint(id, p, null);
+    }
+    return this.getMemory(id);
+  }
+
+  /** 合并时把 note 也接上（语音转写的片段别丢），有"可能不准"就一起标上 */
+  appendMemoryNote(id, extraNote, suspect = false) {
+    const extra = String(extraNote ?? "").trim();
+    if (!extra) return;
+    const row = this.db.prepare("SELECT note, note_suspect FROM memories WHERE id = ?").get(String(id));
+    if (!row) return;
+    const joined = row.note ? row.note + "；" + extra : extra;
+    this.db
+      .prepare("UPDATE memories SET note = ?, note_suspect = ? WHERE id = ?")
+      .run(joined, row.note_suspect || suspect ? 1 : 0, String(id));
   }
 
   getMemory(id) {

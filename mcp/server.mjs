@@ -27,6 +27,7 @@ import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { Ringmind, RINGS } from '../src/index.js'
+import { ingestMessage } from '../src/core/ingest.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const ROOT = resolve(HERE, '..')
@@ -207,21 +208,32 @@ function toolOverview() {
  * 故意不放进 TOOLS：工具清单是她的认知边界，自动入库不该被她（或 agent）点名调用。
  * 插件（留影）知道工具名，直接 tools/call 即可。
  */
-function toolIngest({ content, points, source, speaker, at }) {
+/**
+ * 自动入库（机器工具，她看不见）
+ *
+ * 合并/幂等的规则在 src/core/ingest.js，这里只做参数归一 + 回话。
+ * 以前它是"一次调用写一条"，于是语音合成 54 次就多了 54 条工具回执 ——
+ * 现在同一段对话会合并，同一条 message_id 重复投递只留一条。
+ */
+function toolIngest({ content, points, source, speaker, at, note, message_id, conv_key, ring }) {
   const text = String(content ?? '').trim()
   if (!text) throw new Error('content 不能为空')
-  const input = {
+  const mem = ingestMessage(db.store, db.config, {
     content: text,
-    ring: 'ring4',            // 自动入库 = 接盘层，她不知道有这一格
-    speaker: String(speaker ?? 'user'),
+    ring: ring ?? 'ring4',   // 自动入库 = 接盘层，她不知道有这一格
+    speaker: speaker === 'self' ? 'self' : 'user',
     source: String(source ?? 'private'),
-    skipVault: true,          // 原文已由桥接层逐条备份进总库，描述是派生物不重复存
-  }
-  if (Array.isArray(points) && points.length) input.points = points.map((p) => String(p).trim()).filter(Boolean)
-  if (at) input.at = Number(at)
-  const mem = db.remember(input)
-  const pts = mem?.points?.length ?? 0
-  return `留影入库（#${mem?.id ?? '?'} · 闲聊圈 · ${pts} 点）：${text.slice(0, 60)}`
+    at: at ? Number(at) : Date.now(),
+    points: Array.isArray(points) ? points : undefined,
+    note: note ? String(note) : undefined,
+    noteSuspect: !!note,     // 转写进来的内容一律标"可能不准"
+    messageId: message_id ? String(message_id) : undefined,
+    convKey: conv_key ? String(conv_key) : undefined,
+    skipVault: true,         // 原文已由桥接层逐条备份进总库；工具产出连总库都不进
+  })
+  const how = mem.action === 'append' ? '并进上一条' : mem.action === 'duplicate' ? '重复投递，没再写' : '新开一条'
+  const pts = points?.length ?? 0
+  return `留影入库（#${mem.id ?? '?'} · ${how}${pts ? ' · ' + pts + ' 点' : ''}）：${String(mem.content ?? text).slice(0, 60)}`
 }
 
 // 没有 toolForget —— 她这边不提供删除。

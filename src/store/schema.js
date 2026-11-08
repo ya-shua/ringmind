@@ -9,7 +9,7 @@
  */
 
 /** 结构版本，将来迁移用 */
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 export const SCHEMA_SQL = `
 PRAGMA journal_mode = WAL;
@@ -46,12 +46,37 @@ CREATE TABLE IF NOT EXISTS memories (
   hits       INTEGER DEFAULT 0,            -- 被想起的次数
   pinned     INTEGER DEFAULT 0,            -- 是否被她钉住
   note       TEXT,                         -- 批注（更正、存疑）
+  note_suspect INTEGER DEFAULT 0,          -- 这条 note 是"可能不准"的（语音转写）
+  message_id TEXT,                         -- 来源消息的稳定 id（幂等用，重复投递不再写）
   import_batch TEXT,                       -- 导入批次（面板导入的才标，撤回用）
   updated_at INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_mem_ring   ON memories(ring);
 CREATE INDEX IF NOT EXISTS idx_mem_source ON memories(source);
 CREATE INDEX IF NOT EXISTS idx_mem_born   ON memories(created_at);
+-- 注意：message_id 的唯一索引不写在这里。
+-- 这里的 SQL 在 migrate() 之前跑，老库还没有 message_id 那一列，建索引会直接报错。
+-- 它由 migrate()（老库）和 ensureIndexes()（新库）两头保证。
+
+-- 收到过的消息 id：幂等靠它
+--   为什么不直接看 memories.message_id？因为合并进来的一句不单独占一行 ——
+--   第 2 句被并进第 1 条之后，memories 里找不到它的 id，重发就会被再并一遍。
+--   所以每个 message_id 都在这张表里留一条，指向它最后落进的那条记忆。
+CREATE TABLE IF NOT EXISTS seen_messages (
+  message_id TEXT PRIMARY KEY,
+  memory_id  TEXT NOT NULL,
+  ts         INTEGER NOT NULL
+);
+
+-- 自动入库的"上一段对话"游标：合并窗口靠它跨进程续上
+--   slot = 会话key|发言方（私聊:123|0 / 群:456|1）
+--   重启后靠这张表知道"刚才那段对话的最后一条是哪条"，不然每次开会话都会把对话拆成两截。
+CREATE TABLE IF NOT EXISTS conv_state (
+  slot      TEXT PRIMARY KEY,
+  memory_id TEXT NOT NULL,
+  first_ts  INTEGER NOT NULL,
+  last_ts   INTEGER NOT NULL
+);
 
 -- 点（细节点 / 钩子）
 --   weight   : 她的排序，1 = 最看重；NULL = 没进钩子列表
@@ -117,6 +142,10 @@ CREATE INDEX IF NOT EXISTS idx_ops_ts ON ops(ts);
  *          老库打开时会自动补上，这里不用 ALTER。
  * v3 → v4：memories 加 import_batch（导入批次标记，撤回导入用）。
  *          只有面板导入的记忆才有值，日常记住的都是 NULL。
+ * v4 → v5：自动入库的两件配套东西 ——
+ *          ① memories 加 message_id（唯一索引，重复投递只写一次）
+ *          ② 新表 conv_state（合并游标），合并窗口不再只活在进程内存里
+ *          另外补 note_suspect：语音转写进来的 note 要标"可能不准"。
  */
 export function migrate(db, fromVersion) {
   const v = Number(fromVersion ?? 0);
@@ -136,7 +165,56 @@ export function migrate(db, fromVersion) {
     }
   }
 
+  if (v < 5) {
+    const cols = db.prepare("PRAGMA table_info(memories)").all().map((c) => c.name);
+    if (!cols.includes("note_suspect")) {
+      db.exec("ALTER TABLE memories ADD COLUMN note_suspect INTEGER DEFAULT 0");
+    }
+    if (!cols.includes("message_id")) {
+      db.exec("ALTER TABLE memories ADD COLUMN message_id TEXT");
+    }
+    // 老库里 message_id 都是 NULL，唯一索引对 NULL 不生效，建索引不会撞
+    db.exec(
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_mem_msgid ON memories(message_id) WHERE message_id IS NOT NULL"
+    );
+    db.exec(`CREATE TABLE IF NOT EXISTS conv_state (
+      slot      TEXT PRIMARY KEY,
+      memory_id TEXT NOT NULL,
+      first_ts  INTEGER NOT NULL,
+      last_ts   INTEGER NOT NULL
+    )`);
+    db.exec(`CREATE TABLE IF NOT EXISTS seen_messages (
+      message_id TEXT PRIMARY KEY,
+      memory_id  TEXT NOT NULL,
+      ts         INTEGER NOT NULL
+    )`);
+  }
+
   return SCHEMA_VERSION;
+}
+
+/**
+ * 新库也要有的东西（migrate 只在老库上跑，全新库走不到 v<5 那段）
+ * 现在只有一条：message_id 的唯一索引 —— 幂等靠它。
+ */
+export function ensureIndexes(db) {
+  const cols = db.prepare("PRAGMA table_info(memories)").all().map((c) => c.name);
+  if (cols.includes("message_id")) {
+    db.exec(
+      "CREATE UNIQUE INDEX IF NOT EXISTS idx_mem_msgid ON memories(message_id) WHERE message_id IS NOT NULL"
+    );
+  }
+  db.exec(`CREATE TABLE IF NOT EXISTS conv_state (
+    slot      TEXT PRIMARY KEY,
+    memory_id TEXT NOT NULL,
+    first_ts  INTEGER NOT NULL,
+    last_ts   INTEGER NOT NULL
+  )`);
+  db.exec(`CREATE TABLE IF NOT EXISTS seen_messages (
+    message_id TEXT PRIMARY KEY,
+    memory_id  TEXT NOT NULL,
+    ts         INTEGER NOT NULL
+  )`);
 }
 
 /** 首次建库时要写入的元信息 */

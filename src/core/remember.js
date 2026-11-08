@@ -51,6 +51,9 @@ export function hookWeights(n) {
  *        ringEnteredAt 给现在（从这个时刻才开始衰减）。
  * @param {string} [input.importBatch]  导入批次标记。面板导入的才标，
  *        有了它整批可撤回；日常记住的不传，保持 NULL。
+ * @param {string} [input.note]         批注（语音转写、存疑内容都在这里）
+ * @param {boolean} [input.noteSuspect] 这条 note 是"可能不准"的（转写）
+ * @param {string} [input.messageId]    来源消息 id —— 自动入库的幂等键
  */
 export function remember(store, config, input) {
   const {
@@ -103,6 +106,9 @@ export function remember(store, config, input) {
     content: content || cleanPoints.join("，"),
     emotion,
     pinned,
+    note: input?.note ?? null,
+    noteSuspect: input?.noteSuspect ?? false,
+    messageId: input?.messageId ?? null,
     importBatch: input?.importBatch ?? null,
   });
 

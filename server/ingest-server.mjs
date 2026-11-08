@@ -66,7 +66,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { Ringmind } from "../src/index.js";
-import { autoSplit } from "../src/core/remember.js";
+import { ingestMessage } from "../src/core/ingest.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, "..");
@@ -206,6 +206,9 @@ function parseMessage(body, cfg = CFG) {
     ts,
     // 谁来指代"这一条属于哪段对话"——合并窗口按它分组
     convKey: `${kind ?? "private"}:${convId ?? "unknown"}`,
+    // 幂等键：同一条消息框架可能重复投递（重连、重放），有它就只写一次。
+    // 不做文本去重 —— 连发十次「在吗」是十件事。
+    messageId: String(body.message_id ?? body.messageId ?? "").trim() || undefined,
   };
 }
 
@@ -217,9 +220,6 @@ function getDb() {
   if (!_db) _db = new Ringmind(DB_PATH);
   return _db;
 }
-
-/** 每段对话的最后一条 ring4 记忆 + 它的时间，用于合并 */
-const mergeState = new Map(); // convKey + "|" + (self?1:0) → { memoryId, lastTs, firstTs }
 
 /** 格式化成总库里的一行：2026/10/31 22:38｜私聊：【管理员】某人：正文 */
 function vaultLine(msg) {
@@ -236,6 +236,13 @@ function vaultLine(msg) {
 
 function ingest(msg, database = getDb()) {
   const db = database;
+
+  // ⓪ 幂等：同一条消息重发（框架重连/重试/重放）就整条跳过，总库也不重复留
+  if (msg.messageId) {
+    const seen = db.store.seenMessage(msg.messageId);
+    if (seen) return { action: "duplicate", memoryId: seen.memory_id };
+  }
+
   // ① 总库：一条一条，永不合并（这是"逐条原文"那条铁律）
   db.store.addVault({
     ts: msg.ts,
@@ -248,55 +255,28 @@ function ingest(msg, database = getDb()) {
   if (cap) db.store.trimVault(cap);
 
   // ② 闲聊圈：同一段对话合并成一条，不然 5 天就爆
-  const slot = msg.convKey + "|" + (msg.isSelf ? "1" : "0");
-  const prev = mergeState.get(slot);
-  // 时间往回跳（补历史、跨天补录）不算"同一段对话"，宁可新开一条，
-  // 否则一条新记忆会被塞进 5 分钟前那段里，顺序全乱。
   //
-  // 两道闸一起卡（2026-11-03 定）：
-  //   ① 跟上一句隔不超过 gapMs（默认 90 秒）—— 停了一会儿就是换话题了
-  //   ② 距这条对话的第一句不超过 mergeWindowMs（默认 5 分钟）—— 聊再久也不能无限长
-  // 只卡 ② 的话，一小时里断断续续的闲聊会被拼成一大坨（实测最长 814 字）；
-  // 加上 ①，同一天闲聊最长降到 145 字。
-  const withinWindow =
-    prev &&
-    msg.ts >= prev.lastTs &&
-    msg.ts - prev.lastTs <= CFG.gapMs &&
-    msg.ts - prev.firstTs <= CFG.mergeWindowMs;
-
-  if (withinWindow) {
-    // 追加到上一条：原文接上新的，再写回去
-    const mem = db.store.getMemory(prev.memoryId);
-    if (mem) {
-      const joined = mem.content + "；" + msg.text;
-      db.store.db
-        .prepare("UPDATE memories SET content = ?, updated_at = ? WHERE id = ?")
-        .run(joined, Date.now(), prev.memoryId);
-
-      // 光改 content 不够：环心的遗忘靠删点、检索靠点匹配。
-      // 不补点的话，后面接进来的话在 points 里根本不存在 ——
-      // 搜的时候永远捞不出来，衰减时也删不掉那一段，成了一条"删不掉的尾巴"。
-      // weight 传 null：新点自动排在最后（越晚说的越不重要），跟 remember 的规则一致。
-      for (const p of autoSplit(msg.text)) {
-        db.store.insertPoint(prev.memoryId, p, null);
-      }
-
-      prev.lastTs = msg.ts;
-      return { action: "append", memoryId: prev.memoryId };
+  // 规则不在这个文件里了 —— 搬到了 src/core/ingest.js，和 MCP 的 ring_ingest 共用
+  // 同一份实现。原因：以前只有这条 HTTP 路有合并，别的入口（海螺走 MCP）一句话
+  // 一条记忆，语音合成 54 次就多了 54 条工具回执。
+  //
+  // 五条判据（缺一条就不是同一段对话）：
+  //   ① 同一个聊天   ② 同一个发言方   ③ 时间不回溯   ④ 间隔 ≤ gapMs   ⑤ 本段 ≤ mergeWindowMs
+  const res = ingestMessage(
+    db.store,
+    // 窗口值来自本服务的 ingest.json（不是环心的 config），这里递进去
+    { ...db.config, ingest: { gapMs: CFG.gapMs, mergeWindowMs: CFG.mergeWindowMs } },
+    {
+      content: msg.text,
+      source: msg.kind,
+      speaker: msg.isSelf ? "self" : "user",
+      at: msg.ts,
+      convKey: msg.convKey,
+      messageId: msg.messageId,
+      skipVault: true, // 原文已经进总库了，别再写一遍
     }
-  }
-
-  // 新开一条
-  const mem = db.remember({
-    content: msg.text,
-    ring: "ring4",
-    source: msg.kind,
-    speaker: msg.isSelf ? "self" : "user",
-    at: msg.ts,
-    skipVault: true, // 原文已经进总库了，别再写一遍
-  });
-  mergeState.set(slot, { memoryId: mem.id, lastTs: msg.ts, firstTs: msg.ts });
-  return { action: "new", memoryId: mem.id };
+  );
+  return { action: res.action, memoryId: res.id };
 }
 
 /* ───────────────────────── HTTP ───────────────────────── */
