@@ -9,7 +9,7 @@
  */
 
 /** 结构版本，将来迁移用 */
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 export const SCHEMA_SQL = `
 PRAGMA journal_mode = WAL;
@@ -45,8 +45,10 @@ CREATE TABLE IF NOT EXISTS memories (
   emotion    REAL    DEFAULT 0,            -- 0..10
   hits       INTEGER DEFAULT 0,            -- 被想起的次数
   pinned     INTEGER DEFAULT 0,            -- 是否被她钉住
-  note       TEXT,                         -- 批注（更正、存疑）
-  note_suspect INTEGER DEFAULT 0,          -- 这条 note 是"可能不准"的（语音转写）
+  note       TEXT,                         -- 批注（其他来源：更正、存疑）
+  note_voice TEXT,                         -- 语音转写批注（和图片的分开，互不覆盖）
+  note_visual TEXT,                        -- 图片/表情批注（"我的说法"这类）
+  note_suspect INTEGER DEFAULT 0,          -- 语音那条 note 是"可能不准"的（转写）
   message_id TEXT,                         -- 来源消息的稳定 id（幂等用，重复投递不再写）
   import_batch TEXT,                       -- 导入批次（面板导入的才标，撤回用）
   updated_at INTEGER
@@ -188,6 +190,17 @@ export function migrate(db, fromVersion) {
       memory_id  TEXT NOT NULL,
       ts         INTEGER NOT NULL
     )`);
+  }
+
+  if (v < 6) {
+    // 批注分两区：语音转写和图片说明各占一列，互不覆盖
+    const cols = db.prepare("PRAGMA table_info(memories)").all().map((c) => c.name);
+    if (!cols.includes("note_voice")) {
+      db.exec("ALTER TABLE memories ADD COLUMN note_voice TEXT");
+    }
+    if (!cols.includes("note_visual")) {
+      db.exec("ALTER TABLE memories ADD COLUMN note_visual TEXT");
+    }
   }
 
   return SCHEMA_VERSION;

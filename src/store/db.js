@@ -169,11 +169,12 @@ export class Store {
   // ── 记忆 ────────────────────────────────────────────────
 
   insertMemory(m) {
+    const kind = m.noteKind ?? (m.noteSuspect ? "voice" : "other");
     this.db
       .prepare(
         `INSERT INTO memories
-           (id, created_at, ring_entered_at, born_load, ring, source, speaker, content, emotion, hits, pinned, note, note_suspect, message_id, import_batch, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+           (id, created_at, ring_entered_at, born_load, ring, source, speaker, content, emotion, hits, pinned, note, note_voice, note_visual, note_suspect, message_id, import_batch, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .run(
         m.id,
@@ -187,7 +188,9 @@ export class Store {
         m.emotion ?? 0,
         m.hits ?? 0,
         m.pinned ? 1 : 0,
-        m.note ?? null,
+        kind === "other" ? (m.note ?? null) : null,
+        kind === "voice" ? (m.note ?? null) : null,
+        kind === "visual" ? (m.note ?? null) : null,
         m.noteSuspect ? 1 : 0,
         m.messageId ?? null,
         m.importBatch ?? null,
@@ -247,25 +250,44 @@ export class Store {
     return this.getMemory(id);
   }
 
+  /** 批注分三区：voice = 语音转写，visual = 图片/表情说明，other = 其它更正 */
+  static noteColumn(kind) {
+    if (kind === "voice") return "note_voice";
+    if (kind === "visual") return "note_visual";
+    return "note";
+  }
+
   /** 覆盖 note：有些批注只保留最新一条才有意义（比如"我的说法"改名了） */
-  setMemoryNote(id, note, suspect = false) {
+  setMemoryNote(id, note, suspect = false, kind = "other") {
     const text = String(note ?? "").trim();
     if (!text) return;
-    this.db
-      .prepare("UPDATE memories SET note = ?, note_suspect = ? WHERE id = ?")
-      .run(text, suspect ? 1 : 0, String(id));
+    const col = Store.noteColumn(kind);
+    if (col === "note_voice") {
+      this.db
+        .prepare("UPDATE memories SET note_voice = ?, note_suspect = ? WHERE id = ?")
+        .run(text, suspect ? 1 : 0, String(id));
+      return;
+    }
+    this.db.prepare(`UPDATE memories SET ${col} = ? WHERE id = ?`).run(text, String(id));
   }
 
   /** 合并时把 note 也接上（语音转写的片段别丢），有"可能不准"就一起标上 */
-  appendMemoryNote(id, extraNote, suspect = false) {
+  appendMemoryNote(id, extraNote, suspect = false, kind = "other") {
     const extra = String(extraNote ?? "").trim();
     if (!extra) return;
-    const row = this.db.prepare("SELECT note, note_suspect FROM memories WHERE id = ?").get(String(id));
+    const col = Store.noteColumn(kind);
+    const row = this.db
+      .prepare(`SELECT ${col} AS note, note_suspect FROM memories WHERE id = ?`)
+      .get(String(id));
     if (!row) return;
     const joined = row.note ? row.note + "；" + extra : extra;
-    this.db
-      .prepare("UPDATE memories SET note = ?, note_suspect = ? WHERE id = ?")
-      .run(joined, row.note_suspect || suspect ? 1 : 0, String(id));
+    if (col === "note_voice") {
+      this.db
+        .prepare("UPDATE memories SET note_voice = ?, note_suspect = ? WHERE id = ?")
+        .run(joined, row.note_suspect || suspect ? 1 : 0, String(id));
+      return;
+    }
+    this.db.prepare(`UPDATE memories SET ${col} = ? WHERE id = ?`).run(joined, String(id));
   }
 
   getMemory(id) {

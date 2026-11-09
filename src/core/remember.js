@@ -108,6 +108,7 @@ export function remember(store, config, input) {
     pinned,
     note: input?.note ?? null,
     noteSuspect: input?.noteSuspect ?? false,
+    noteKind: input?.noteKind ?? (input?.noteSuspect ? "voice" : "other"),
     messageId: input?.messageId ?? null,
     importBatch: input?.importBatch ?? null,
   });

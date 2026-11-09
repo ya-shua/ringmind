@@ -154,8 +154,21 @@ describe("ingestMessage · 幂等与总库", () => {
     );
     const mem = db.store.getMemory(r.id);
     assert.equal(mem.content, "[语音]");
-    assert.equal(mem.note, "他说今天会下雨");
+    assert.equal(mem.note_voice, "他说今天会下雨"); // 语音批注单独一列
     assert.equal(mem.note_suspect, 1);
+  });
+
+  test("图片批注落 note_visual，覆盖时不碰语音那条", () => {
+    const db = fresh();
+    const r = ingestMessage(
+      db.store, db.config,
+      base({ content: "[语音]", note: "转写的那句", noteSuspect: true, messageId: "v9" })
+    );
+    db.store.setMemoryNote(r.id, "我的说法：摆烂猫", false, "visual");
+    db.store.setMemoryNote(r.id, "我的说法：摆烂猫改名了", false, "visual");
+    const mem = db.store.getMemory(r.id);
+    assert.equal(mem.note_visual, "我的说法：摆烂猫改名了"); // 覆盖只换图片那一列
+    assert.equal(mem.note_voice, "转写的那句");
   });
 
   test("合并时 note 也接上，不丢后说的那段", () => {
@@ -163,7 +176,7 @@ describe("ingestMessage · 幂等与总库", () => {
     const a = ingestMessage(db.store, db.config, base({ content: "[语音]", note: "第一句", noteSuspect: true, messageId: "v1" }));
     ingestMessage(db.store, db.config, base({ content: "[语音]", note: "第二句", noteSuspect: true, messageId: "v2", at: T0 + 20 * SEC }));
     const mem = db.store.getMemory(a.id);
-    assert.match(mem.note, /第一句；第二句/);
+    assert.match(mem.note_voice, /第一句；第二句/);
     assert.equal(mem.note_suspect, 1);
   });
 });

@@ -215,7 +215,7 @@ function toolOverview() {
  * 以前它是"一次调用写一条"，于是语音合成 54 次就多了 54 条工具回执 ——
  * 现在同一段对话会合并，同一条 message_id 重复投递只留一条。
  */
-function toolIngest({ content, points, source, speaker, at, note, message_id, conv_key, ring }) {
+function toolIngest({ content, points, source, speaker, at, note, note_kind, message_id, conv_key, ring }) {
   const text = String(content ?? '').trim()
   if (!text) throw new Error('content 不能为空')
   const mem = ingestMessage(db.store, db.config, {
@@ -226,7 +226,8 @@ function toolIngest({ content, points, source, speaker, at, note, message_id, co
     at: at ? Number(at) : Date.now(),
     points: Array.isArray(points) ? points : undefined,
     note: note ? String(note) : undefined,
-    noteSuspect: !!note,     // 转写进来的内容一律标"可能不准"
+    noteSuspect: !!note && (note_kind ?? 'voice') === 'voice', // 语音转写才标"可能不准"，图片说明是人写的
+    noteKind: note ? (note_kind === 'visual' ? 'visual' : note_kind === 'voice' ? 'voice' : 'other') : undefined,
     messageId: message_id ? String(message_id) : undefined,
     convKey: conv_key ? String(conv_key) : undefined,
     skipVault: true,         // 原文已由桥接层逐条备份进总库；工具产出连总库都不进
@@ -244,9 +245,10 @@ function toolIngest({ content, points, source, speaker, at, note, message_id, co
  * 还各自参与遗忘。所以只往旧条追加一句，不动原文、不新增行。
  * 和 ring_ingest 一样故意不进 TOOLS。
  */
-function toolNote({ message_id, id, note, mode }) {
+function toolNote({ message_id, id, note, mode, kind }) {
   const text = String(note ?? '').trim()
   if (!text) throw new Error('note 不能为空')
+  const zone = kind === 'voice' || kind === 'visual' ? kind : 'other'
   let memoryId = id ? String(id) : ''
   if (!memoryId && message_id) {
     const seen = db.store.seenMessage(String(message_id))
@@ -258,11 +260,11 @@ function toolNote({ message_id, id, note, mode }) {
   if (!mem) return `没找到那条记忆（#${memoryId}），没批注`
   if (mode === 'replace') {
     // 覆盖：适合"我的说法"这种一位字段（改名了旧说法就没用了，堆着只会越来越长）
-    db.store.setMemoryNote(memoryId, text, false)
-    return `批注已换（#${memoryId}）：${text.slice(0, 60)}`
+    db.store.setMemoryNote(memoryId, text, false, zone)
+    return `批注已换（#${memoryId}·${zone}）：${text.slice(0, 60)}`
   }
-  db.store.appendMemoryNote(memoryId, text, false)
-  return `批注已加（#${memoryId}）：${text.slice(0, 60)}`
+  db.store.appendMemoryNote(memoryId, text, false, zone)
+  return `批注已加（#${memoryId}·${zone}）：${text.slice(0, 60)}`
 }
 
 // 没有 toolForget —— 她这边不提供删除。

@@ -46,6 +46,7 @@ export const INGEST_DEFAULTS = {
  * @param {string[]} [msg.points]         拆好的点；不传就按标点自动切
  * @param {string} [msg.note]             批注（语音转写、存疑内容）
  * @param {boolean} [msg.noteSuspect]     note 是"可能不准"的（转写）
+ * @param {string} [msg.noteKind]         批注分区：voice（语音）/ visual（图片）/ other
  * @param {string} [msg.messageId]        来源消息 id —— 幂等用，重复投递不再写
  * @param {string} [msg.convKey]          哪个聊天（默认取 source，够用了）
  * @param {string} [msg.ring]
@@ -95,7 +96,10 @@ export function ingestMessage(store, config, msg = {}) {
         ? msg.points.map((p) => String(p).trim()).filter(Boolean)
         : autoSplit(text);
       const updated = store.appendToMemory(prev.memory_id, text, extraPoints);
-      if (msg.note) store.appendMemoryNote(prev.memory_id, msg.note, msg.noteSuspect);
+      if (msg.note) {
+        const kind = msg.noteKind ?? (msg.noteSuspect ? "voice" : "other");
+        store.appendMemoryNote(prev.memory_id, msg.note, msg.noteSuspect, kind);
+      }
       store.setConvState(slot, prev.memory_id, prev.first_ts, at);
       store.markSeen(msg.messageId, prev.memory_id, at);
       return { action: "append", id: prev.memory_id, content: updated?.content ?? mem.content };
@@ -112,6 +116,7 @@ export function ingestMessage(store, config, msg = {}) {
     points: msg.points,
     note: msg.note,
     noteSuspect: msg.noteSuspect,
+    noteKind: msg.noteKind,
     messageId: msg.messageId,
     // 原文由调用方逐条进总库；工具产出连总库都不进
     skipVault: msg.skipVault !== false,

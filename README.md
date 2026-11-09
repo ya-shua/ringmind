@@ -144,6 +144,19 @@ git pull
 
 **关掉不用确认**，只有打开要过这一道。
 
+### 总库有没有上限
+
+有，只是**默认不限**。总库（vault）是原文存档，只增不减，机器跑几年会把磁盘吃满；
+想设就设一条条数上限，超了删**最旧的**（删了真找不回来，所以默认不设）：
+
+```bash
+node scripts/set-vault-cap.mjs          # 看现在多少、用了多少
+node scripts/set-vault-cap.mjs 200000   # 最多留 20 万条
+node scripts/set-vault-cap.mjs 0        # 回到不限
+```
+
+这条上限每次写记忆时都会检查（`remember → trimVault`），改完立刻生效。
+
 ---
 
 ## 怎么接 DeepSeek Harness（DSH）
@@ -395,6 +408,17 @@ const demo = "13800138000"; // privacy-ok 文档示例号
 ---
 
 ## 更新日志
+
+### v1.5.4 · 2026-11-09
+
+**批注分区 + 总库上限有个入口。**
+
+- `memories` 新增 `note_voice` / `note_visual`：语音转写和图片说明各占一列，**互不覆盖**
+  （表情改名覆盖「我的说法」时，不会再顺手把同一条记忆上的转写批注抹掉）。
+  `note` 留给其它更正；`note_suspect` 只对语音那条有意义（图片说明是人写的，不标"可能不准"）。
+- `SCHEMA_VERSION` 5 → 6，带迁移：老库补两列，数据一条不动。
+- `ring_ingest` 多了 `note_kind`（voice / visual / other），`ring_note` 多了 `kind`（默认 other）。
+- 新增 `scripts/set-vault-cap.mjs`：总库条数上限（0 = 不限），超了删最旧的。
 
 ### v1.5.3 · 2026-11-09
 
