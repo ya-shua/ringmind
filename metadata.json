@@ -1,0 +1,26 @@
+{
+  "id": "ring",
+  "name": "环形的心",
+  "name_en": "RingMind",
+  "version": "1.5.4",
+  "author": "ya-shua",
+  "description": "记忆面板：她记得的事都存在这里，海螺通过 MCP 调它的记忆工具。",
+  "builtin": false,
+  "kind": "app",
+  "page": "http://127.0.0.1:5173/",
+  "port": 5173,
+  "launch": {
+    "runtime": "node",
+    "entry": "src/web/server.js",
+    "args": [
+      "--port",
+      "5173"
+    ],
+    "port": 5173,
+    "url": "http://127.0.0.1:5173/",
+    "note": "记忆面板，端口 5173。海螺通过 MCP 用它的记忆工具。"
+  },
+  "source": {
+    "repo": ""
+  }
+}
