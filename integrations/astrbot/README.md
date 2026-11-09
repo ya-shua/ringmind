@@ -1,8 +1,8 @@
 # 接 AstrBot
 
-> 📦 **示例，未在使用。** 现在实际跑的链路是 SnowLuma → 海螺 → DSH → MCP（见
-> [`../conch/`](../conch/)）。这份留着当**走 HTTP 那条路**的完整样本 ——
-> 换成 NapCat 直连、自研机器人，照着它改就行（字段对照见 [`../napcat/`](../napcat/)）。
+> 📦 **示例，未在使用。** 现在实际跑的链路是 `QQ → SnowLuma → 海螺 → mcp-ring`（见
+> [`../conch/`](../conch/)），跟 AstrBot 和 qq-bridge 都无关。这份留着当**走 HTTP 那条路**
+> 的完整样本 —— 换成 NapCat 直连、自研机器人，照着它改就行（字段对照见 [`../napcat/`](../napcat/)）。
 >
 > 语音输出别抄本目录那套写法，用框架无关的 [`../tts-client/`](../tts-client/)。
 

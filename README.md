@@ -182,12 +182,19 @@ node scripts/set-vault-cap.mjs 0        # 回到不限
 
 ## 怎么接 QQ（OneBot）
 
-QQ 侧走外部桥接 [qq-bridge](https://github.com/Derpyu520/qq-bridge)（OneBot v11 → DSH），记忆库以补丁形式接入：
+QQ 侧只要一个 OneBot v11 协议端（SnowLuma / NapCat 都行），接法是**两层里挑一层**：
 
 ```
-QQ → SnowLuma → qq-bridge ─┬─ DSH agent → mcp-ring（她主动记 / 想起来）
-                            └─ ring-ingest（自动入库：逐条原文进总库，合并落闲聊圈）
+① 海螺那条（现在在用）
+   QQ → SnowLuma ──► 海螺（自己就是宿主）──┬─ 插件：海螺（说话主逻辑）
+                                            └─ core/mcp.py ──► mcp-ring（自动入库 + 她主动记）
+
+② qq-bridge 那条
+   QQ → SnowLuma ──► qq-bridge ──► DSH agent ──► mcp-ring（她主动记 / 想起来）
 ```
+
+两个都是独立可跑的，**互不相干**：海螺不经过 qq-bridge，qq-bridge 也不需要海螺。
+但既然库只有一个，别让两边同时往同一个 `.db` 写。
 
 两条硬规矩：
 
@@ -241,21 +248,22 @@ QQ → SnowLuma → qq-bridge ─┬─ DSH agent → mcp-ring（她主动记 / 
 记忆库本体不认识任何框架。它只认两样东西：
 
 ```
-MCP 工具        她主动记 / 想起来        ← 海螺、任何 DSH agent
+MCP 工具        她主动记 / 想起来        ← 海螺、任何会开 MCP 客户端的程序
 一个 HTTP 接口   别人把聊天灌进来        ← AstrBot、NapCat 直连、自研机器人
 ```
 
 **每个框架一个薄适配器，只做三件事**：拿到文本 → 调上面的通用层 → 挂回它的回复对象。
 合并、幂等、衰减这些全在通用层，适配器一行都不许有 —— 每加一个框架，只是加个几十行的文件。
 
-现成的四份在 [`integrations/`](integrations/)：
+现成的几份在 [`integrations/`](integrations/)：
 
-| 框架 | 状态 | 走哪条路 |
+| 是什么 | 状态 | 走哪条路 |
 | --- | --- | --- |
-| [海螺（conch）](integrations/conch/) | ✅ 在用 | MCP `ring_ingest` |
-| [SnowLuma + qq-bridge](integrations/qq-bridge/) | ✅ 在用 | 桥接不写记忆，只交出 MCP 工具 |
-| [AstrBot](integrations/astrbot/) | 📦 示例 | HTTP `POST /ingest` |
+| [海螺（conch）](integrations/conch/) | ✅ 在用 | MCP `ring_ingest`（自带 MCP 客户端） |
 | [NapCat（OneBot v11）](integrations/napcat/) | 📖 照着写 | HTTP `POST /ingest` |
+| [AstrBot](integrations/astrbot/) | 📦 示例代码 | HTTP `POST /ingest` |
+| [SnowLuma + qq-bridge](integrations/qq-bridge/) | ⬜ 另一条独立链路 | 桥接不写记忆，只交出 MCP 工具 |
+| [声来（语音输出）](integrations/tts-client/) | ✅ 在用 | 外部面板 HTTP :17878，跟记忆库无关 |
 
 `server/ingest-server.mjs` 就是那个 HTTP 接口 —— **谁的框架都行，POST 过来就能记，环心本体一行代码没改**：
 

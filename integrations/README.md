@@ -16,23 +16,28 @@
 
 | 路子 | 谁在用 | 怎么走 |
 | --- | --- | --- |
+| **MCP 工具** | 海螺（在用）、任何 MCP 客户端 | `ring_ingest` / `ring_remember` / `ring_recall` |
 | **HTTP `/ingest`** | AstrBot、NapCat 直连、自研机器人 | `POST http://127.0.0.1:5188/ingest` |
-| **MCP 工具** | 海螺（在用）、任何 DSH agent | `ring_ingest` / `ring_remember` / `ring_recall` |
 
 两条路的**写入行为完全一致**（同一份 `src/core/ingest.js`：五条判据合并 + `message_id` 幂等），
-区别只是传输：HTTP 给「不在 DSH 里的机器人」，MCP 给「本来就在 DSH 里的会话」。
+区别只是传输：MCP 给「自己会开 MCP 客户端的程序」，HTTP 给「只会发 HTTP 的机器人」。
 
-⚠️ **三条路别同时写同一个 `.db`**：`qq-bridge` / `ingest-server` / 海螺的 MCP —
-同一句话会进去两遍。要养两只机器人，给它们两个库文件。
+⚠️ **别让两个东西同时写同一个 `.db`**：同一句话会进去两遍。要养两只机器人，给它们两个库文件。
 
 ## 常见框架
 
-| 框架 | 目录 | 状态 | 说明 |
+下面几条是**互不相干的三套东西**，别混成一锅：
+
+| 是什么 | 目录 | 状态 | 说明 |
 | --- | --- | --- | --- |
-| **海螺（conch）** | [`conch/`](conch/) | ✅ 在用 | 走 MCP，`speaker` 分 `user`/`self`，`conv_key` 一聊天一槽 |
-| **AstrBot** | [`astrbot/`](astrbot/) | 📦 示例，未在使用 | 走 HTTP，一行 POST 就够 |
-| **NapCat（OneBot v11）** | [`napcat/`](napcat/) | 📖 照着写 | 事件里有 `message_type`/`group_id`/`user_id`，直接 POST |
-| **SnowLuma + qq-bridge** | [`qq-bridge/`](qq-bridge/) | ✅ 在用（另一半） | 桥接不写记忆，只把 MCP 工具交给 agent |
+| **海螺（conch）** | [`conch/`](conch/) | ✅ 在用 | 独立宿主，自带 MCP 客户端池，直连环心 |
+| **NapCat（OneBot v11）** | [`napcat/`](napcat/) | 📖 照着写 | 事件直接 POST `/ingest` |
+| **AstrBot** | [`astrbot/`](astrbot/) | 📦 示例代码 | HTTP 那条路的完整样本 |
+| **SnowLuma + qq-bridge** | [`qq-bridge/`](qq-bridge/) | ⬜ 另一条独立链路 | DSH 侧的桥接，**跟海螺没关系** |
+| **声来（语音输出）** | [`tts-client/`](tts-client/) | ✅ 在用 | 独立面板（HTTP :17878），跟记忆库无关 |
+
+海螺和 qq-bridge 是**两条各自能跑通的路**：海螺自己接协议端（SnowLuma / NapCat），
+qq-bridge 是「QQ 消息 → DSH 会话」那座桥。两个都装着不冲突，但都往同一个库写就会重复。
 
 ## 万能适配器模板
 
