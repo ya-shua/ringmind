@@ -247,6 +247,15 @@ export class Store {
     return this.getMemory(id);
   }
 
+  /** 覆盖 note：有些批注只保留最新一条才有意义（比如"我的说法"改名了） */
+  setMemoryNote(id, note, suspect = false) {
+    const text = String(note ?? "").trim();
+    if (!text) return;
+    this.db
+      .prepare("UPDATE memories SET note = ?, note_suspect = ? WHERE id = ?")
+      .run(text, suspect ? 1 : 0, String(id));
+  }
+
   /** 合并时把 note 也接上（语音转写的片段别丢），有"可能不准"就一起标上 */
   appendMemoryNote(id, extraNote, suspect = false) {
     const extra = String(extraNote ?? "").trim();
