@@ -215,7 +215,7 @@ function toolOverview() {
  * 以前它是"一次调用写一条"，于是语音合成 54 次就多了 54 条工具回执 ——
  * 现在同一段对话会合并，同一条 message_id 重复投递只留一条。
  */
-function toolIngest({ content, points, source, speaker, at, note, note_kind, message_id, conv_key, ring }) {
+function toolIngest({ content, points, source, speaker, at, note, note_kind, message_id, conv_key, ring, no_merge }) {
   const text = String(content ?? '').trim()
   if (!text) throw new Error('content 不能为空')
   const mem = ingestMessage(db.store, db.config, {
@@ -230,6 +230,7 @@ function toolIngest({ content, points, source, speaker, at, note, note_kind, mes
     noteKind: note ? (note_kind === 'visual' ? 'visual' : note_kind === 'voice' ? 'voice' : 'other') : undefined,
     messageId: message_id ? String(message_id) : undefined,
     convKey: conv_key ? String(conv_key) : undefined,
+    noMerge: no_merge === true,   // 事件型写入：一条就是一条，不按聊天节奏合并
     skipVault: true,         // 原文已由桥接层逐条备份进总库；工具产出连总库都不进
   })
   const how = mem.action === 'append' ? '并进上一条' : mem.action === 'duplicate' ? '重复投递，没再写' : '新开一条'

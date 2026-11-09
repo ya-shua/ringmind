@@ -102,6 +102,49 @@ describe("ingestMessage · 五条判据", () => {
 });
 
 describe("ingestMessage · 幂等与总库", () => {
+  test("noMerge：相隔 3 秒的两件「事」不合并（收表情 / 语音回执这类）", () => {
+    const db = fresh();
+    const a = ingestMessage(db.store, db.config, base({
+      content: "我收了一张表情包：一只猫",
+      convKey: "self:stickers",
+      speaker: "self",
+      messageId: "sticker:aaa",
+      noMerge: true,
+    }));
+    const b = ingestMessage(db.store, db.config, base({
+      content: "我收了一张表情包：一只狗",
+      convKey: "self:stickers",
+      speaker: "self",
+      messageId: "sticker:bbb",
+      noMerge: true,
+      at: T0 + 3 * SEC,
+    }));
+    assert.equal(a.action, "new");
+    assert.equal(b.action, "new");
+    assert.notEqual(a.id, b.id);
+    assert.doesNotMatch(b.content, /猫/);
+  });
+
+  test("noMerge 不占合并游标：紧接着的聊天不会被并进那条事件", () => {
+    const db = fresh();
+    const ev = ingestMessage(db.store, db.config, base({
+      content: "我收了一张表情包：一只猫",
+      convKey: "self:stickers",
+      speaker: "self",
+      messageId: "sticker:ccc",
+      noMerge: true,
+    }));
+    const chat = ingestMessage(db.store, db.config, base({
+      content: "在干嘛",
+      convKey: "self:stickers",
+      speaker: "self",
+      messageId: "m-chat-1",
+      at: T0 + 5 * SEC,
+    }));
+    assert.equal(chat.action, "new");
+    assert.equal(chat.id !== ev.id, true);
+  });
+
   test("同一条 message_id 投递两次只留一条，第二次不写", () => {
     const db = fresh();
     const a = ingestMessage(db.store, db.config, base({ messageId: "qq-001" }));

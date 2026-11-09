@@ -13,6 +13,10 @@
  * 注意：她主动记的（ring_remember）不走这里。她说"记住这个"就是一条，
  * 不该被合并成一段。
  *
+ * 机器写的"事件"也一样：收下一张表情、合成一段语音，都是**一件事**，
+ * 不该按聊天节奏拼成一段。这类写入带 msg.noMerge = true，
+ * 只跳过 ④⑤（间隔 / 封顶），幂等和批注照旧 —— 一条就是一条。
+ *
  * 判据（五条，缺一条就不是同一段对话）
  * ────────────────────────────────────
  *   ① 同一个聊天       slot 里带 convKey（private:1234 / group:5678）
@@ -50,6 +54,7 @@ export const INGEST_DEFAULTS = {
  * @param {string} [msg.messageId]        来源消息 id —— 幂等用，重复投递不再写
  * @param {string} [msg.convKey]          哪个聊天（默认取 source，够用了）
  * @param {string} [msg.ring]
+ * @param {boolean} [msg.noMerge]         事件型写入：不合并，一条就是一条（表情、语音回执这类）
  * @param {boolean} [msg.skipVault]       默认 true：原文由调用方逐条进总库
  * @returns {{action:"new"|"append"|"duplicate", id:string, content:string}}
  */
@@ -83,7 +88,9 @@ export function ingestMessage(store, config, msg = {}) {
   const prev = store.getConvState(slot);
 
   // ── ③④⑤ 时间三条 ──
+  // noMerge：机器写的事件（收下一张表情、合成一句语音）本来就不是"一段聊天"
   const sameConvo =
+    !msg.noMerge &&
     !!prev &&
     at >= prev.last_ts && // ③ 不回溯
     at - prev.last_ts <= gapMs && // ④ 间隔
@@ -121,7 +128,7 @@ export function ingestMessage(store, config, msg = {}) {
     // 原文由调用方逐条进总库；工具产出连总库都不进
     skipVault: msg.skipVault !== false,
   });
-  store.setConvState(slot, mem.id, at, at);
+  if (!msg.noMerge) store.setConvState(slot, mem.id, at, at);
   store.markSeen(msg.messageId, mem.id, at);
   return { action: "new", id: mem.id, content: mem.content };
 }
