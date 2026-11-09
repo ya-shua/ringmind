@@ -31,6 +31,81 @@ import { buildSeaScene } from "./sea.js";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 
+// ── 身份（给"别的宿主怎么认出它"用）──────────────────────────
+// 仓库根的 metadata.json 是唯一一份身份：id / 版本 / 能力声明都在那儿。
+// 代码里不再抄一遍，抄了早晚会跟 metadata 漂开。
+const ROOT = resolve(HERE, "../..");
+
+function readMetadata() {
+  try {
+    return JSON.parse(readFileSync(resolve(ROOT, "metadata.json"), "utf8"));
+  } catch {
+    // 文件没了也不能让面板起不来；退回最小身份，至少 /api/health 还能用
+    return { id: "ring", name: "环形的心", version: "0.0.0" };
+  }
+}
+
+const METADATA = readMetadata();
+const PLUGIN_ID = String(METADATA.id || "ring");
+// 版本以 metadata.json 为准；这份文件被删了才退回去读 package.json。
+// （package.json 那份是 npm / 在线更新器认的，正常安装时两边应该一致）
+const PLUGIN_VERSION = String(METADATA.version || "") || localVersion();
+
+/**
+ * 免登录接口的边界：Host 头必须是本机回环。
+ * 服务本身只 listen 127.0.0.1，这一层再挡一道 DNS rebinding
+ * （恶意网页把域名解析到 127.0.0.1 就能从浏览器里打本机端口）。
+ */
+function isLoopbackHost(req) {
+  const raw = String(req.headers.host || "").trim().toLowerCase();
+  const name = raw.replace(/:\d+$/, "").replace(/^\[|\]$/g, "");
+  return name === "127.0.0.1" || name === "localhost" || name === "::1";
+}
+
+/**
+ * 能力清单：给 /api/manifest 用 —— 宿主只看这一份就知道"有几条路进来、各怎么调"。
+ *
+ * 规矩：
+ *   - 只说"怎么调"，不说内部实现；
+ *   - 不带任何绝对路径（本机路径里有用户名，不该出机器）；
+ *   - 端口用运行时真端口，别写死 5173（测试和换端口时会对不上）。
+ */
+function manifestCapabilities(port) {
+  const base = `http://127.0.0.1:${port}`;
+  return [
+    {
+      name: "memory-mcp",
+      kind: "mcp",
+      how: "stdio 子进程：node mcp/server.mjs。工具 ring_remember / ring_recall / ring_search / ring_overview；机器工具 ring_ingest / ring_note 不进工具清单，按名字直呼",
+    },
+    {
+      name: "memory-panel-http",
+      kind: "http",
+      how: `GET ${base}/api/health（免登录，只认本机 Host；未登录时敏感字段抹掉）；登录后 GET ${base}/api/overview 等面板数据，令牌在 data/token.txt`,
+    },
+    {
+      name: "panel-ui",
+      kind: "http",
+      how: `浏览器打开 ${base}/ ，用 data/token.txt 里的令牌登录`,
+    },
+    {
+      name: "ingest-http",
+      kind: "http",
+      how: "node server/ingest-server.mjs（默认 127.0.0.1:5188）；POST /ingest，JSON { text, speaker?, conv_key?, message_id?, at? }",
+    },
+    {
+      name: "memory-db",
+      kind: "file",
+      how: "SQLite 文件 data/memory.db（WAL，文件名看 runtime.db）；只读打开请用 mode=ro，别和 MCP 同时写",
+    },
+    {
+      name: "qq-import-cli",
+      kind: "file",
+      how: "node scripts/import-qq.mjs（--list 只看，--pick 才写）；默认写 data/import.db，进正式库要给 RING_DB 指向 memory.db",
+    },
+  ];
+}
+
 // ── token 用量账本 ────────────────────────────────────────
 // 数据来自 qq-bridge 的 state/token-usage.jsonl，一行一次调用。
 // 默认找项目 data/token-usage.jsonl；data-location.json 里给了 tokenUsageFile 就用那个。
@@ -1584,9 +1659,36 @@ export async function createServer({ dataDir, dbPath, port = 5173, host = "127.0
       return json(res, 200, { ok: true, version: localVersion() });
     }
 
+    // ── 机器可读的身份与能力（免登录，和 /api/version 同级）────────
+    // 走这一条宿主就知道"对面是谁、有几条路、各怎么调"。
+    // 只放能公开的东西：不带令牌、不带绝对路径、不带任何记忆内容。
+    // 注意跟 /api/health 的区别：health 带明文令牌（面板要复制去登录），必须登录后才给。
+    if (method === "GET" && url.split("?")[0] === "/api/manifest") {
+      // 免登录，但只认本机 Host（和 health 同一条边界）
+      if (!isLoopbackHost(req)) {
+        return json(res, 403, { ok: false, error: "manifest 只允许本机访问" });
+      }
+      const livePort = server.address()?.port ?? port;
+      return json(res, 200, {
+        ok: true,
+        metadata: METADATA,
+        capabilities: manifestCapabilities(livePort),
+        runtime: {
+          port: livePort,
+          pid: process.pid,
+          started_at: new Date(startedAt).toISOString(),
+          // 只写 sqlite/文件名：绝对路径里有用户名，不出机器
+          db: "sqlite/" + basename(dbFile),
+        },
+      });
+    }
+
     // ── 以下都要登录 ───────────────────────────────────
+    // 只有 /api/health 例外：它是探活口，别的宿主/体检脚本不该先要令牌。
+    // 免登录分支里会自己做 Host 检查 + 抹掉敏感字段（见下面 health 那一段）。
     if (url.startsWith("/api/")) {
-      if (!sessionOf(req)) return json(res, 401, { ok: false, error: "没登录" });
+      const openForProbe = url.split("?")[0] === "/api/health";
+      if (!openForProbe && !sessionOf(req)) return json(res, 401, { ok: false, error: "没登录" });
 
       if (method === "GET" && url === "/api/overview") {
         return json(res, 200, { ok: true, data: db.overview() });
@@ -2715,10 +2817,27 @@ export async function createServer({ dataDir, dbPath, port = 5173, host = "127.0
         }
       }
 
-      if (method === "GET" && url === "/api/health") {
+      if (method === "GET" && url.split("?")[0] === "/api/health") {
         // 这一页是给"外部连得上没有"用的：
         //   OneBot 网关 / QQ 账号 / 记忆库 / 别的服务
         // OneBot 的地址和 token 存在 meta 里，面板上填一次就行
+        //
+        // 免登录（探活脚本不该先要令牌），但只认本机 Host。
+        // 未登录只回"最小身份"：ok / id / version / uptime_s ——
+        // 别的都没有，尤其令牌、控制台密码、绝对路径、QQ 号一律不出现在这一支里。
+        // 面板是登录后轮询的，走的还是下面那份完整数据。
+        const authed = Boolean(sessionOf(req));
+        if (!authed && !isLoopbackHost(req)) {
+          return json(res, 403, { ok: false, error: "health 只允许本机访问" });
+        }
+        if (!authed) {
+          return json(res, 200, {
+            ok: true,
+            id: PLUGIN_ID,
+            version: PLUGIN_VERSION,
+            uptime_s: Math.floor((Date.now() - startedAt) / 1000),
+          });
+        }
         let ob = readOnebot(db);
         if (process.env.ONEBOT_URL) ob.url = process.env.ONEBOT_URL;
         if (process.env.ONEBOT_TOKEN) ob.token = process.env.ONEBOT_TOKEN;
@@ -2802,8 +2921,12 @@ export async function createServer({ dataDir, dbPath, port = 5173, host = "127.0
           }
         }
 
-        return json(res, 200, {
+        const payload = {
           ok: true,
+          // 身份：宿主/脚本靠这两项认"对面是谁、哪个版本"。
+          // 只加不改 —— data 里原有字段一个没动，面板还在轮询这一页。
+          id: PLUGIN_ID,
+          version: PLUGIN_VERSION,
           data: {
             server: {
               ok: true,
@@ -2853,7 +2976,11 @@ export async function createServer({ dataDir, dbPath, port = 5173, host = "127.0
               { name: "浏览器桥", ok: false, note: "还没接" },
             ],
           },
-        });
+        };
+
+        // 走到这里一定是登录过的（未登录在上面就返回最小身份了），
+        // 所以这一份仍然是原来的完整数据：面板要的都在。
+        return json(res, 200, payload);
       }
 
       if (method === "POST" && url === "/api/panel-token") {

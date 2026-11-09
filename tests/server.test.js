@@ -13,6 +13,10 @@ import { join } from "node:path";
 
 import { createServer } from "../src/web/server.js";
 
+// 身份以仓库根的 metadata.json 为准 —— 别在测试里再抄一遍版本号
+const META = JSON.parse(readFileSync(new URL("../metadata.json", import.meta.url), "utf8"));
+const META_VERSION = String(META.version);
+
 /** 每个测试一个临时目录 + 一个随机端口 */
 async function boot() {
   const dir = mkdtempSync(join(tmpdir(), "ringmind-web-"));
@@ -189,4 +193,86 @@ test("两次启动用的是同一个令牌，不会每次换", async () => {
   b.close();
 
   rmSync(dir, { recursive: true, force: true });
+});
+
+/* ── 对接契约 ──────────────────────────────────────────────
+ * 宿主靠这两个端点判断"对面是谁、怎么接、接的对不对"，
+ * 所以形状本身要锁住：字段少了 / 多了绝对路径或令牌，这里先红。
+ */
+
+test("manifest：免登录可读，形状对，且不泄漏路径和令牌", async () => {
+  const s = await boot();
+  try {
+    const r = await fetch(s.url + "/api/manifest");
+    assert.equal(r.status, 200, "manifest 是给外部宿主发现用的，不该要登录");
+
+    const text = await r.text();
+    const j = JSON.parse(text);
+
+    assert.equal(j.ok, true);
+    assert.equal(j.metadata.id, "ring", "id 要和 metadata.json 一致");
+    assert.equal(j.metadata.version, META_VERSION, "版本以 metadata.json 为准");
+
+    assert.ok(Array.isArray(j.capabilities) && j.capabilities.length >= 3, "能力至少 3 条");
+    for (const c of j.capabilities) {
+      assert.ok(c.name, "每条能力都要有名字");
+      assert.ok(["mcp", "http", "file"].includes(c.kind), "kind 只能是 mcp/http/file，实际 " + c.kind);
+      assert.ok(typeof c.how === "string" && c.how.length > 0, "每条能力都要说怎么调");
+    }
+
+    assert.equal(j.runtime.port, s.port, "端口要报真实端口");
+    assert.equal(j.runtime.pid, process.pid);
+    assert.ok(!Number.isNaN(Date.parse(j.runtime.started_at)), "started_at 要是能解析的时间");
+    assert.match(j.runtime.db, /^sqlite\//, "只写 sqlite/文件名");
+
+    assert.ok(!text.includes(s.dir), "不能带出数据目录的绝对路径");
+    assert.ok(!text.includes(s.token), "不能带出登录令牌");
+    assert.equal(j.data, undefined, "manifest 不该塞面板数据那一整块");
+    assert.ok(!text.includes("consolePassword"), "manifest 不能带控制台密码");
+    assert.ok(!text.toLowerCase().includes("sk-"), "manifest 不能带 key");
+  } finally {
+    await s.done();
+  }
+});
+
+test("health：免登录只回最小身份，登录后字段一个没少（含 id/version）", async () => {
+  const s = await boot();
+  try {
+    // ① 不带任何凭证 —— 体检脚本 / 别的宿主就是这么打的
+    const open = await fetch(s.url + "/api/health");
+    assert.equal(open.status, 200, "探活口不该先要令牌");
+
+    const text = await open.text();
+    const o = JSON.parse(text);
+    assert.deepEqual(Object.keys(o).sort(), ["id", "ok", "uptime_s", "version"], "免登录只给最小身份");
+    assert.equal(o.ok, true);
+    assert.equal(o.id, "ring");
+    assert.equal(o.version, META_VERSION, "版本以 metadata.json 为准");
+    assert.ok(Number.isInteger(o.uptime_s) && o.uptime_s >= 0, "uptime_s 是秒数");
+
+    // 探活面里一个秘密都不许有
+    for (const bad of ["token", "password", "sk-"]) {
+      assert.ok(!text.toLowerCase().includes(bad), "免 token 的 health 不能出现 " + bad);
+    }
+
+    // ② 登录之后：还是原来那份数据，一个字段都没少
+    const { cookie } = await login(s.url, s.token);
+    const r = await fetch(s.url + "/api/health", { headers: { cookie } });
+    assert.equal(r.status, 200);
+
+    const j = await r.json();
+    assert.equal(j.ok, true);
+    assert.equal(j.id, "ring");
+    assert.equal(j.version, META_VERSION);
+
+    // 面板在轮询这一页：server / db / onebot 一个都不能少
+    for (const k of ["server", "db", "onebot", "others"]) {
+      assert.ok(j.data?.[k], "原有字段 data." + k + " 不能丢");
+    }
+    assert.equal(j.data.server.ok, true);
+    assert.equal(j.data.server.token, s.token, "登录后要给明文令牌，面板靠它登录");
+    assert.ok(Number.isInteger(j.data.server.port));
+  } finally {
+    await s.done();
+  }
 });

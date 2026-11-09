@@ -9,6 +9,23 @@
   "kind": "app",
   "page": "http://127.0.0.1:5173/",
   "port": 5173,
+  "contract": "docs/对接.md",
+  "capabilities": [
+    "记住一件事：自己挑圈、可拆点、可带情绪",
+    "给几个由头想起来（想不全才对）",
+    "按关键词查原话，不触发遗忘",
+    "看各圈各有几条、最近记了什么",
+    "自动入库：框架直推，按对话合并、同 id 去重",
+    "面板可视化：记忆海、降级预览、备份导出"
+  ],
+  "standalone": {
+    "works_alone": true,
+    "needs": [
+      "Node.js 22.5 以上（用内置 node:sqlite，零第三方依赖）",
+      "一个可写的数据目录（SQLite 库 + 登录令牌）"
+    ],
+    "how": "npm start 就能单独当本地记忆面板用；MCP / 入库接口只是给宿主接的扩展，不装任何宿主也跑得起来。"
+  },
   "launch": {
     "runtime": "node",
     "entry": "src/web/server.js",
