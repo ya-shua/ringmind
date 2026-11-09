@@ -236,6 +236,30 @@ function toolIngest({ content, points, source, speaker, at, note, message_id, co
   return `留影入库（#${mem.id ?? '?'} · ${how}${pts ? ' · ' + pts + ' 点' : ''}）：${String(mem.content ?? text).slice(0, 60)}`
 }
 
+/**
+ * 批注（机器工具，她看不见）：往一条已经入库的记忆后面追加 note。
+ *
+ * 用途是"更正"：东西改名了、说法变了，但原记忆不该消失 ——
+ * 新写一条会让检索同时捞到旧条和新条（token 翻倍，还可能自相矛盾），
+ * 还各自参与遗忘。所以只往旧条追加一句，不动原文、不新增行。
+ * 和 ring_ingest 一样故意不进 TOOLS。
+ */
+function toolNote({ message_id, id, note }) {
+  const text = String(note ?? '').trim()
+  if (!text) throw new Error('note 不能为空')
+  let memoryId = id ? String(id) : ''
+  if (!memoryId && message_id) {
+    const seen = db.store.seenMessage(String(message_id))
+    if (!seen) return `没找到那条记忆（${message_id}），没批注`
+    memoryId = String(seen.memory_id)
+  }
+  if (!memoryId) throw new Error('要给 message_id 或 id')
+  const mem = db.store.getMemory(memoryId)
+  if (!mem) return `没找到那条记忆（#${memoryId}），没批注`
+  db.store.appendMemoryNote(memoryId, text, false)
+  return `批注已加（#${memoryId}）：${text.slice(0, 60)}`
+}
+
 // 没有 toolForget —— 她这边不提供删除。
 // 分工铁律：她决定记什么，记忆库决定什么时候淡、什么时候掉。
 // 「她不能直接删数据」写死在 docs/交接.md 第 92 行。
@@ -331,6 +355,7 @@ const HANDLERS = {
   ring_search: toolSearch,
   ring_overview: toolOverview,
   ring_ingest: toolIngest, // 机器工具：不进 TOOLS（她的认知边界），插件直呼工具名
+  ring_note: toolNote,     // 机器工具：只给旧记忆追加批注（改名这类更正），也不进 TOOLS
 }
 
 /* ───────────────────────── JSON-RPC over stdio ───────────────────────── */
