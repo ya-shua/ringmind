@@ -236,26 +236,41 @@ QQ → SnowLuma → qq-bridge ─┬─ DSH agent → mcp-ring（她主动记 / 
 
 ---
 
-## 接别的框架（AstrBot / NapCat / 自己写的）
+## 接别的框架（海螺 / AstrBot / NapCat / 自己写的）
 
 记忆库本体不认识任何框架。它只认两样东西：
 
 ```
-MCP 四个工具    她主动记 / 想起来
-一个 HTTP 接口   别人把聊天灌进来
+MCP 工具        她主动记 / 想起来        ← 海螺、任何 DSH agent
+一个 HTTP 接口   别人把聊天灌进来        ← AstrBot、NapCat 直连、自研机器人
 ```
+
+**每个框架一个薄适配器，只做三件事**：拿到文本 → 调上面的通用层 → 挂回它的回复对象。
+合并、幂等、衰减这些全在通用层，适配器一行都不许有 —— 每加一个框架，只是加个几十行的文件。
+
+现成的四份在 [`integrations/`](integrations/)：
+
+| 框架 | 状态 | 走哪条路 |
+| --- | --- | --- |
+| [海螺（conch）](integrations/conch/) | ✅ 在用 | MCP `ring_ingest` |
+| [SnowLuma + qq-bridge](integrations/qq-bridge/) | ✅ 在用 | 桥接不写记忆，只交出 MCP 工具 |
+| [AstrBot](integrations/astrbot/) | 📦 示例 | HTTP `POST /ingest` |
+| [NapCat（OneBot v11）](integrations/napcat/) | 📖 照着写 | HTTP `POST /ingest` |
 
 `server/ingest-server.mjs` 就是那个 HTTP 接口 —— **谁的框架都行，POST 过来就能记，环心本体一行代码没改**：
 
 ```
-QQ → AstrBot 插件 ──POST /ingest──► ingest-server ─┬─ vault   每条原文
-                                                   └─ ring4   同一段对话合并成一条
+QQ → 任何机器人 ──POST /ingest──► ingest-server ─┬─ vault   每条原文
+                                                 └─ ring4   同一段对话合并成一条
 ```
 
 ```bash
 node server/ingest-server.mjs        # 默认 127.0.0.1:5188
 curl http://127.0.0.1:5188/health    # {"ok":true,"vault":0,...}
 ```
+
+> 两条路（HTTP / MCP）的写入行为完全一致，同一份 `src/core/ingest.js`。
+> 但**三条路别同时写同一个 `.db`**（qq-bridge / ingest-server / 海螺），否则同一句话会进去两遍。
 
 ### 合并规则：五条判据
 
@@ -419,6 +434,22 @@ const demo = "13800138000"; // privacy-ok 文档示例号
 - `SCHEMA_VERSION` 5 → 6，带迁移：老库补两列，数据一条不动。
 - `ring_ingest` 多了 `note_kind`（voice / visual / other），`ring_note` 多了 `kind`（默认 other）。
 - 新增 `scripts/set-vault-cap.mjs`：总库条数上限（0 = 不限），超了删最旧的。
+
+**顺手：接别的框架写成四份现成的 + 一个框架无关的语音客户端。**
+
+以前 `integrations/` 里只有两份 AstrBot 专用代码 —— 一套没在跑的框架、一份把 AstrBot 的
+`result.chain` / `Comp.Record` 和语音逻辑混在一个文件里的插件。换框架就得把那 4 行再抄一遍。
+
+- 新增 [`integrations/README.md`](integrations/README.md)：**适配器铁律**（一个框架一个薄文件，
+  只做「拿文本 → 调通用层 → 挂回回复」），合并/幂等/衰减一律不许进适配器；附 Python 和 Node
+  两份万能模板，以及每个框架都必须回答的四个问题。
+- 新增 [`integrations/conch/`](integrations/conch/)：海螺（在用）—— 走 MCP，含两个踩过的坑。
+- 新增 [`integrations/napcat/`](integrations/napcat/)：OneBot v11 字段对照表 + 二十行 WS 样例。
+- 新增 [`integrations/qq-bridge/`](integrations/qq-bridge/)：桥接不写记忆，只交出 MCP 工具；
+  工具白名单怎么加。
+- 新增 [`integrations/tts-client/`](integrations/tts-client/)：声来语音的**框架无关客户端**
+  （零依赖、可 import、可当 CLI），把「文本 → wav」从 AstrBot 插件里剥出来。
+- `integrations/astrbot/` 标注为「示例，未在使用」，语音部分指向 `tts-client`。
 
 ### v1.5.3 · 2026-11-09
 
